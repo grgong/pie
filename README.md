@@ -209,6 +209,24 @@ opens its own VCF and FASTA file handles to avoid shared state. For a
 300 Mb genome with ~30k genes on 8 threads, expect ~5-15 minutes and
 ~2-4 GB peak memory.
 
+## Testing
+
+```bash
+# Unit and integration tests (~1.4s)
+pytest tests/ -m "not slow"
+
+# Regression tests against real Acyrthosiphon pisum dataset (~12s)
+# Requires: tar xzf data/Acyrthosiphon_pisum.tar.gz -C data/
+pytest tests/ -m slow
+
+# All tests
+pytest tests/
+```
+
+The regression tests pin piN/piS values for 400 genes validated against
+SNPGenie, covering site counting, multiallelic VCF handling, and both
+strand orientations.
+
 ## Citation
 
 This tool implements the averaging method for counting synonymous and
