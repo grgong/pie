@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pie"
+version = "0.1.0"
+description = "piN/piS Estimator for pool-seq data"
+requires-python = ">=3.12"
+dependencies = [
+    "cyvcf2",
+    "gffutils",
+    "pysam",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "click",
+]
+
+[project.scripts]
+pie = "pie.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pie"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,12 @@
+##fileformat=VCFv4.2
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+##FORMAT=<ID=RO,Number=1,Type=Integer,Description="Reference allele observations">
+##FORMAT=<ID=AO,Number=A,Type=Integer,Description="Alternate allele observations">
+##contig=<ID=chr1,length=350>
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
+chr1	6	.	T	C	30	.	.	GT:DP:AD:RO:AO	0/1:100:80,20:80:20
+chr1	7	.	G	A	50	.	.	GT:DP:AD:RO:AO	0/1:100:70,30:70:30
+chr1	195	.	A	T	45	.	.	GT:DP:AD:RO:AO	0/1:100:60,40:60:40
+chr1	297	.	A	G	15	.	.	GT:DP:AD:RO:AO	0/1:100:50,50:50:50

@@ -1,0 +1,14 @@
+chr1	test	gene	1	90	.	+	.	gene_id "gene1"; gene_name "gene1";
+chr1	test	transcript	1	90	.	+	.	gene_id "gene1"; transcript_id "mRNA1";
+chr1	test	exon	1	90	.	+	.	gene_id "gene1"; transcript_id "mRNA1"; exon_number "1";
+chr1	test	CDS	1	90	.	+	0	gene_id "gene1"; transcript_id "mRNA1"; exon_number "1";
+chr1	test	gene	101	220	.	+	.	gene_id "gene2"; gene_name "gene2";
+chr1	test	transcript	101	220	.	+	.	gene_id "gene2"; transcript_id "mRNA2";
+chr1	test	exon	101	159	.	+	.	gene_id "gene2"; transcript_id "mRNA2"; exon_number "1";
+chr1	test	exon	181	220	.	+	.	gene_id "gene2"; transcript_id "mRNA2"; exon_number "2";
+chr1	test	CDS	101	159	.	+	0	gene_id "gene2"; transcript_id "mRNA2"; exon_number "1";
+chr1	test	CDS	181	220	.	+	1	gene_id "gene2"; transcript_id "mRNA2"; exon_number "2";
+chr1	test	gene	231	311	.	-	.	gene_id "gene3"; gene_name "gene3";
+chr1	test	transcript	231	311	.	-	.	gene_id "gene3"; transcript_id "mRNA3";
+chr1	test	exon	231	311	.	-	.	gene_id "gene3"; transcript_id "mRNA3"; exon_number "1";
+chr1	test	CDS	231	311	.	-	0	gene_id "gene3"; transcript_id "mRNA3"; exon_number "1";

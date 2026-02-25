@@ -1,0 +1,16 @@
+# environment.yml
+name: pie
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - cyvcf2
+  - gffutils
+  - pysam
+  - numpy
+  - pandas
+  - matplotlib
+  - click
+  - pytest
+  - htslib
