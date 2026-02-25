@@ -5,3 +5,9 @@ dist/
 build/
 .eggs/
 *.egg
+
+# Extracted test data (regenerate from .tar.gz)
+data/Acyrthosiphon_pisum/
+
+# Analysis outputs
+results/
