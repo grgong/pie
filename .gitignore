@@ -11,3 +11,9 @@ data/Acyrthosiphon_pisum/
 
 # Analysis outputs
 results/
+
+# Claude Code
+.claude/
+
+# Design docs
+docs/plans/
