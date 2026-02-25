@@ -7,6 +7,8 @@ from cyvcf2 import VCF
 
 log = logging.getLogger(__name__)
 
+_VALID_BASES = frozenset("ACGT")
+
 
 @dataclass(slots=True)
 class Variant:
@@ -55,40 +57,103 @@ class VariantReader:
         self.close()
 
     def fetch(self, chrom: str, start: int, end: int) -> list[Variant]:
-        """Fetch filtered variants in region (0-based, half-open)."""
-        variants = []
+        """Fetch filtered variants in region (0-based, half-open).
+
+        Handles both single-line multiallelic records (``ALT=C,G``) and
+        decomposed records (from ``bcftools norm -m-``).  Records at the
+        same position are merged and allele frequencies recomputed from
+        raw allele depths.
+        """
         region = f"{chrom}:{start + 1}-{end}"
+
+        # Collect per-record data including raw allele depths
+        # (pos, ref, alt, freq, depth, ref_count, alt_count)
+        raw: list[tuple[int, str, str, float, int, int, int]] = []
         for record in self._vcf(region):
-            if not record.is_snp:
-                continue
-            if len(record.ALT) != 1:
-                continue
             if self._pass_only and record.FILTER is not None:
                 continue
             if record.QUAL is not None and record.QUAL < self._min_qual:
                 continue
-            depth, freq = self._extract_freq_depth(record)
-            if depth < self._min_depth:
+            # REF must be a single valid nucleotide for a SNP
+            if record.REF not in _VALID_BASES:
                 continue
-            if freq < self._min_freq:
-                continue
-            variants.append(Variant(
-                pos=record.POS - 1, ref=record.REF,
-                alt=record.ALT[0], freq=freq, depth=depth,
-            ))
+
+            for alt_idx, alt_allele in enumerate(record.ALT):
+                # Per-allele SNP check: single valid nucleotide
+                if alt_allele not in _VALID_BASES:
+                    continue
+                depth, freq, ref_count, alt_count = (
+                    self._extract_freq_depth(record, alt_idx))
+                if depth < self._min_depth:
+                    continue
+                if freq < self._min_freq:
+                    continue
+                raw.append((
+                    record.POS - 1, record.REF, alt_allele,
+                    freq, depth, ref_count, alt_count,
+                ))
+
+        if not raw:
+            return []
+
+        # Group by position to merge multiallelic decomposed records
+        by_pos: dict[int, list[tuple]] = {}
+        for rec in raw:
+            by_pos.setdefault(rec[0], []).append(rec)
+
+        variants: list[Variant] = []
+        for pos in sorted(by_pos):
+            group = by_pos[pos]
+            if len(group) == 1:
+                p, ref, alt, freq, depth, _, _ = group[0]
+                variants.append(Variant(
+                    pos=p, ref=ref, alt=alt, freq=freq, depth=depth))
+            else:
+                # Merge: recompute frequencies using allele depths
+                ref_count = group[0][5]
+                if ref_count > 0:
+                    total_alt = sum(r[6] for r in group)
+                    total_depth = ref_count + total_alt
+                    for r in group:
+                        new_freq = (r[6] / total_depth
+                                    if total_depth > 0 else 0.0)
+                        if new_freq >= self._min_freq:
+                            variants.append(Variant(
+                                pos=r[0], ref=r[1], alt=r[2],
+                                freq=new_freq, depth=total_depth))
+                else:
+                    # No raw allele counts — keep original frequencies
+                    for r in group:
+                        variants.append(Variant(
+                            pos=r[0], ref=r[1], alt=r[2],
+                            freq=r[3], depth=r[4]))
+
         return variants
 
-    def _extract_freq_depth(self, record) -> tuple[int, float]:
-        """Extract depth and alt freq. Tries AD first, then INFO AF/DP."""
+    def _extract_freq_depth(
+        self, record, alt_index: int = 0,
+    ) -> tuple[int, float, int, int]:
+        """Extract depth and alt freq for a specific ALT allele.
+
+        Args:
+            record: cyvcf2 Variant record.
+            alt_index: 0-based index into record.ALT.
+
+        Returns:
+            (total_depth, alt_frequency, ref_allele_count, alt_allele_count)
+        """
         try:
             ad = record.format("AD")
             if ad is not None:
                 ref_count = int(ad[0][0])
-                alt_count = int(ad[0][1])
-                total = ref_count + alt_count
+                alt_count = int(ad[0][alt_index + 1])
+                if ref_count < 0 or alt_count < 0:
+                    raise ValueError("missing AD value")
+                # Total depth across all alleles at this site
+                total = sum(int(x) for x in ad[0] if int(x) >= 0)
                 if total > 0:
-                    return total, alt_count / total
-        except (KeyError, IndexError, TypeError):
+                    return total, alt_count / total, ref_count, alt_count
+        except (KeyError, IndexError, TypeError, ValueError):
             pass
 
         try:
@@ -105,10 +170,12 @@ class VariantReader:
         try:
             af = record.INFO.get("AF")
             if isinstance(af, (list, tuple)):
-                freq = float(af[0])
+                freq = (float(af[alt_index])
+                        if alt_index < len(af) else 0.0)
             else:
-                freq = float(af) if af is not None else 0.0
+                freq = (float(af)
+                        if af is not None and alt_index == 0 else 0.0)
         except (KeyError, TypeError, ValueError):
             freq = 0.0
 
-        return int(depth), freq
+        return int(depth), freq, 0, 0

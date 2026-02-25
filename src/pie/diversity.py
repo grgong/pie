@@ -117,26 +117,30 @@ def build_allele_freq_array(
         pos_map[p2] = (i, 1)
         pos_map[p3] = (i, 2)
 
-    # Overlay variants
+    # Group variants by position for proper multi-allelic handling
+    pos_variants: dict[int, list[Variant]] = {}
     for var in variants:
-        if var.pos not in pos_map:
-            continue
-        codon_idx, pos_in_codon = pos_map[var.pos]
+        if var.pos in pos_map:
+            pos_variants.setdefault(var.pos, []).append(var)
 
-        # Convert variant alleles to CDS-sense
-        alt = var.alt
-        if strand == "-":
-            alt = _COMPLEMENT_BASE[alt]
-
-        alt_idx = _BASE_TO_IDX[alt]
-
-        # Reduce reference frequency, add alt frequency
-        # The reference allele in the freq array is already CDS-sense
+    # Apply variant frequencies per position (handles multi-allelic correctly)
+    for pos, var_list in pos_variants.items():
+        codon_idx, pos_in_codon = pos_map[pos]
         ref_base = codons[codon_idx][pos_in_codon]
         ref_idx = _BASE_TO_IDX[ref_base]
 
-        freq[codon_idx, pos_in_codon, ref_idx] -= var.freq
-        freq[codon_idx, pos_in_codon, alt_idx] += var.freq
+        # Set each alt allele frequency directly
+        total_alt_freq = 0.0
+        for var in var_list:
+            alt = var.alt
+            if strand == "-":
+                alt = _COMPLEMENT_BASE[alt]
+            alt_idx = _BASE_TO_IDX[alt]
+            freq[codon_idx, pos_in_codon, alt_idx] = var.freq
+            total_alt_freq += var.freq
+
+        # Reference = 1 - sum(alt frequencies)
+        freq[codon_idx, pos_in_codon, ref_idx] = max(0.0, 1.0 - total_alt_freq)
 
     # Clamp to [0, 1] and renormalize
     freq = np.clip(freq, 0.0, 1.0)

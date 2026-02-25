@@ -88,12 +88,15 @@ for _i in range(64):
                 continue
             _mutant = _codon[:_pos] + _alt + _codon[_pos + 1 :]
             _mut_aa = _GENETIC_CODE[_mutant]
+            if _mut_aa == "*":
+                continue  # Exclude mutations to stop codons
             if _mut_aa == _aa:
                 _s_count += 1
             else:
                 _n_count += 1
-        N_SITES[_i, _pos] = _n_count / 3.0
-        S_SITES[_i, _pos] = _s_count / 3.0
+        _valid = _n_count + _s_count
+        N_SITES[_i, _pos] = _n_count / _valid if _valid > 0 else 0.0
+        S_SITES[_i, _pos] = _s_count / _valid if _valid > 0 else 0.0
 
 # ---------------------------------------------------------------------------
 # 4. N_DIFFS / S_DIFFS — pairwise differences
