@@ -9,11 +9,8 @@ build/
 # Extracted test data (regenerate from .tar.gz)
 data/Acyrthosiphon_pisum/
 
+docs/plans
+
 # Analysis outputs
 results/
 
-# Claude Code
-.claude/
-
-# Design docs
-docs/plans/
