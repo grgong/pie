@@ -31,7 +31,7 @@ def main():
 @click.option("--min-qual", default=20.0, show_default=True, help="Minimum variant quality")
 @click.option("--pass-only", is_flag=True, help="Only use PASS-filtered variants")
 @click.option("--window-size", default=1000, show_default=True, help="Sliding window size (bp)")
-@click.option("--window-step", default=100, show_default=True, help="Sliding window step (bp)")
+@click.option("--window-step", default=100, show_default=True, type=click.IntRange(min=1), help="Sliding window step (bp)")
 @click.option("--threads", default=1, show_default=True, help="Number of threads")
 def run(vcf, gff, fasta, outdir, min_freq, min_depth, min_qual, pass_only,
         window_size, window_step, threads):

@@ -111,7 +111,7 @@ class VariantReader:
             else:
                 # Merge: recompute frequencies using allele depths
                 ref_count = group[0][5]
-                if ref_count > 0:
+                if ref_count > 0 or any(r[6] > 0 for r in group):
                     total_alt = sum(r[6] for r in group)
                     total_depth = ref_count + total_alt
                     for r in group:
@@ -122,7 +122,7 @@ class VariantReader:
                                 pos=r[0], ref=r[1], alt=r[2],
                                 freq=new_freq, depth=total_depth))
                 else:
-                    # No raw allele counts — keep original frequencies
+                    # No raw allele depths available — keep original frequencies
                     for r in group:
                         variants.append(Variant(
                             pos=r[0], ref=r[1], alt=r[2],
