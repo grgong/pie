@@ -31,7 +31,7 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
             "piN": piN,
             "piS": piS,
             "piN_piS": piN_piS if piN_piS is not None else "NA",
-            "mean_depth": r.mean_depth,
+            "mean_variant_depth": r.mean_variant_depth,
             "n_variants": r.n_variants,
         })
     df = pd.DataFrame(rows)

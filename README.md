@@ -176,7 +176,7 @@ One row per gene. Columns:
 | piN | N_diffs / N_sites |
 | piS | S_diffs / S_sites |
 | piN_piS | piN / piS (NA when piS = 0) |
-| mean_depth | Mean read depth across CDS variants |
+| mean_variant_depth | Mean read depth across variant sites (0 when no variants) |
 | n_variants | SNP count within CDS |
 
 ### `window_results.tsv`
@@ -228,6 +228,9 @@ frequencies. For a codon with variants at positions 1 and 3:
 p1: {A: 0.95, C: 0.05}   p2: {G: 1.0}   p3: {T: 0.80, A: 0.20}
   -> AGT (0.76), AGA (0.19), CGT (0.04), CGA (0.01)
 ```
+
+This assumes linkage equilibrium between positions within a codon, which
+is inherent to pool-seq data where individual haplotypes are not observed.
 
 Site counts are the frequency-weighted sum across codon haplotypes.
 Pairwise differences are computed for all haplotype pairs, weighted by

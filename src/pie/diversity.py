@@ -64,7 +64,7 @@ class GeneResult:
     S_sites: float
     N_diffs: float
     S_diffs: float
-    mean_depth: float
+    mean_variant_depth: float
     n_variants: int
     codon_results: list[CodonResult] = field(default_factory=list)
 
@@ -333,11 +333,11 @@ def compute_gene_diversity(
         total_N_diffs += cr.N_diffs
         total_S_diffs += cr.S_diffs
 
-    # Mean depth from variants
+    # Mean depth across variant sites only (0 when no variants)
     if all_variants:
-        mean_depth = sum(v.depth for v in all_variants) / len(all_variants)
+        mean_variant_depth = sum(v.depth for v in all_variants) / len(all_variants)
     else:
-        mean_depth = 0.0
+        mean_variant_depth = 0.0
 
     return GeneResult(
         gene_id=gene.gene_id,
@@ -352,7 +352,7 @@ def compute_gene_diversity(
         S_sites=total_S_sites,
         N_diffs=total_N_diffs,
         S_diffs=total_S_diffs,
-        mean_depth=mean_depth,
+        mean_variant_depth=mean_variant_depth,
         n_variants=len(all_variants),
         codon_results=codon_results,
     )

@@ -12,7 +12,7 @@ def sample_results():
             start=0, end=90, strand="+", n_codons=29, n_poly_codons=2,
             N_sites=59.6667, S_sites=27.3333,
             N_diffs=0.42, S_diffs=0.32,
-            mean_depth=100.0, n_variants=2,
+            mean_variant_depth=100.0, n_variants=2,
             codon_results=[
                 CodonResult("chr1", 0, 2.5, 0.5, 0.0, 0.0),
                 CodonResult("chr1", 3, 2.0, 1.0, 0.0, 0.32),
@@ -25,7 +25,7 @@ def sample_results():
             start=100, end=220, strand="+", n_codons=32, n_poly_codons=1,
             N_sites=65.6667, S_sites=30.3333,
             N_diffs=0.48, S_diffs=0.0,
-            mean_depth=100.0, n_variants=1,
+            mean_variant_depth=100.0, n_variants=1,
             codon_results=[CodonResult("chr1", 100, 2.0, 1.0, 0.0, 0.0)],
         ),
     ]
