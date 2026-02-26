@@ -35,8 +35,9 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
             "n_variants": r.n_variants,
         })
     df = pd.DataFrame(rows)
-    # Convert "NA" strings to actual NaN for proper TSV handling
-    df["piN_piS"] = pd.to_numeric(df["piN_piS"], errors="coerce")
+    if not df.empty:
+        # Convert "NA" strings to actual NaN for proper TSV handling
+        df["piN_piS"] = pd.to_numeric(df["piN_piS"], errors="coerce")
     df.to_csv(path, sep="\t", index=False)
 
 
