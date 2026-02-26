@@ -64,3 +64,28 @@ class TestVariantReader:
             variants = reader.fetch("chr1", 230, 311)
             assert len(variants) == 1
             assert variants[0].pos == 296
+
+
+class TestMultiallelicFiltering:
+    def test_default_skips_multiallelic(self, multiallelic_vcf_file):
+        """Default behavior: positions with >1 ALT allele are discarded."""
+        with VariantReader(multiallelic_vcf_file, min_freq=0.0, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            # pos 7 has 2 ALT alleles (decomposed) -> skipped
+            # Only pos 6 and pos 195 remain
+            assert len(variants) == 2
+            positions = [v.pos for v in variants]
+            assert 5 in positions   # pos 6 (1-based) -> 5 (0-based)
+            assert 194 in positions  # pos 195 -> 194
+            assert 6 not in positions  # pos 7 -> 6, should be skipped
+
+    def test_keep_multiallelic_preserves_all(self, multiallelic_vcf_file):
+        """With keep_multiallelic=True, multiallelic sites are merged and kept."""
+        with VariantReader(multiallelic_vcf_file, min_freq=0.0, min_depth=0,
+                           min_qual=0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            # pos 7 has 2 ALT alleles -> merged and kept
+            assert len(variants) == 4
+            positions = [v.pos for v in variants]
+            assert positions.count(6) == 2  # two ALT alleles at pos 7 (0-based 6)
