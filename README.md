@@ -19,10 +19,11 @@ in a numpy-vectorized Python stack with gene-level multiprocessing.
 SNPGenie excludes stop-producing mutations from site counting: for a
 codon position where one of three possible changes introduces a stop
 codon, only the two remaining sense→sense changes are counted (e.g.,
-AGA pos 1: N = 1/2, S = 1/2). `pie` instead counts stop-gained
-mutations as nonsynonymous by default (AGA pos 1: N = 2/3, S = 1/3),
-following the convention used by tools such as PAML and libsequence. Use
-`--exclude-stop-codons` for SNPGenie-like stop-codon handling.
+AGA pos 1: N = 1/2, S = 1/2). `pie` follows this same convention by
+default, consistent with the classical NG86 method. Use
+`--include-stop-codons` to instead count stop-gained mutations as
+nonsynonymous (AGA pos 1: N = 2/3, S = 1/3), following the convention
+used by tools such as PAML and libsequence.
 
 **Multiallelic sites and frequency overlay.**
 When a VCF is decomposed with `bcftools norm -m-`, a multiallelic site
@@ -122,7 +123,7 @@ pie run --vcf FILE --gff FILE --fasta FILE --outdir DIR [OPTIONS]
 | `--min-qual` | 20.0 | Minimum variant QUAL score |
 | `--pass-only` | off | Only use PASS-filtered variants |
 | `--keep-multiallelic` | off | Keep and merge multiallelic sites instead of skipping them |
-| `--exclude-stop-codons` | off | Exclude stop-gained mutations from piN (by default they count as nonsynonymous) |
+| `--include-stop-codons` | off | Count stop-gained mutations as nonsynonymous (by default they are excluded, matching NG86/SNPGenie) |
 | `--window-size` | 1000 | Sliding window size in bp |
 | `--window-step` | 100 | Sliding window step in bp |
 | `--threads` | 1 | Number of parallel worker processes |
@@ -229,11 +230,12 @@ nonsynonymous (N) and synonymous (S) site counts at each of the three
 codon positions. Each position is evaluated by considering all three
 possible single-nucleotide changes and classifying them as synonymous or
 nonsynonymous under the standard genetic code. Mutations that introduce a
-premature stop codon (stop-gained) are counted as nonsynonymous by
-default. For example, if 2 of 3 changes are nonsynonymous (including any
-that produce a stop codon), that position contributes 2/3 N sites and 1/3
-S sites. Use `--exclude-stop-codons` to exclude these mutations from site
-counting instead.
+premature stop codon (stop-gained) are excluded from site counting by
+default, matching the classical NG86/SNPGenie convention. For example,
+if one of 3 changes produces a stop codon and the other is synonymous,
+that position contributes N = 1/2 and S = 1/2 (counting only the two
+sense→sense changes). Use `--include-stop-codons` to instead count
+stop-gained mutations as nonsynonymous.
 
 ### Handling pool-seq frequencies
 
@@ -262,12 +264,11 @@ pathways (those not passing through a stop codon intermediate).
 ### Edge cases
 
 - **Stop-gained mutations:** By default, SNPs that introduce a premature
-  stop codon are treated as nonsynonymous changes, consistent with the
-  standard approach in population genetics (e.g., PAML, libsequence).
-  Both the site counting (N_sites) and pairwise difference (N_diffs)
-  calculations include these mutations. With `--exclude-stop-codons`,
-  stop-gained alleles are removed from polymorphic codons and excluded
-  from site counting (legacy behavior).
+  stop codon are excluded from site counting and pairwise difference
+  calculations, matching the classical NG86 method and SNPGenie. With
+  `--include-stop-codons`, stop-gained mutations are instead counted as
+  nonsynonymous changes, consistent with the convention used by PAML and
+  libsequence.
 - **Exon-spanning codons:** CDS exons are concatenated in genomic order
   before codon extraction. Codons split across exon boundaries are handled
   by tracking per-base genomic positions through the concatenated sequence.

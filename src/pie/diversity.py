@@ -160,9 +160,9 @@ def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> di
 
     Args:
         freq: shape (3, 4) allele frequency array for one codon.
-        exclude_stops: If True, remove stop codon alleles and renormalize
-            (legacy behavior). If False (default), keep stop alleles and
-            count them as nonsynonymous.
+        exclude_stops: If True (default at CLI level), remove stop codon
+            alleles and renormalize (NG86/SNPGenie convention). If False,
+            keep stop alleles and count them as nonsynonymous.
 
     Returns:
         dict with keys N_sites, S_sites, N_diffs, S_diffs.
@@ -250,9 +250,9 @@ def compute_gene_diversity(
         gene: GeneModel with CDS exon coordinates.
         ref: ReferenceGenome for sequence access.
         vcf: VariantReader for variant access.
-        exclude_stops: If True, exclude stop_gained mutations from piN
-            calculation (legacy behavior). If False (default), count them
-            as nonsynonymous.
+        exclude_stops: If True (default at CLI level), exclude stop_gained
+            mutations from piN (NG86/SNPGenie convention). If False,
+            count them as nonsynonymous.
 
     Returns:
         GeneResult with accumulated N/S sites and diffs.

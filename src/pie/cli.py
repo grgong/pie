@@ -31,13 +31,13 @@ def main():
 @click.option("--min-qual", default=20.0, show_default=True, help="Minimum variant quality")
 @click.option("--pass-only", is_flag=True, help="Only use PASS-filtered variants")
 @click.option("--keep-multiallelic", is_flag=True, help="Keep and merge multiallelic sites instead of skipping them")
-@click.option("--exclude-stop-codons", is_flag=True, help="Exclude stop_gained mutations from piN (by default they count as nonsynonymous)")
+@click.option("--include-stop-codons", is_flag=True, help="Count stop_gained mutations as nonsynonymous (by default they are excluded, matching NG86/SNPGenie conventions)")
 @click.option("--window-size", default=1000, show_default=True, help="Sliding window size (bp)")
 @click.option("--window-step", default=100, show_default=True, type=click.IntRange(min=1), help="Sliding window step (bp)")
 @click.option("--threads", default=1, show_default=True, help="Number of threads")
 @click.option("--sample", default=None, help="Sample name to analyse (required for multi-sample VCFs)")
 def run(vcf, gff, fasta, outdir, min_freq, min_depth, min_qual, pass_only,
-        keep_multiallelic, exclude_stop_codons, window_size, window_step,
+        keep_multiallelic, include_stop_codons, window_size, window_step,
         threads, sample):
     """Run piN/piS analysis."""
     from pie.vcf import ensure_indexed, get_sample_names
@@ -83,7 +83,7 @@ def run(vcf, gff, fasta, outdir, min_freq, min_depth, min_qual, pass_only,
         fasta_path=fasta, gff_path=gff, vcf_path=vcf,
         min_freq=min_freq, min_depth=min_depth, min_qual=min_qual,
         pass_only=pass_only, keep_multiallelic=keep_multiallelic,
-        exclude_stops=exclude_stop_codons, threads=threads, sample=sample,
+        exclude_stops=not include_stop_codons, threads=threads, sample=sample,
     )
     log.info("Processed %d genes", len(results))
 

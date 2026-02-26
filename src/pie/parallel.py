@@ -43,7 +43,7 @@ def run_parallel(
     min_qual: float = 20.0,
     pass_only: bool = False,
     keep_multiallelic: bool = False,
-    exclude_stops: bool = False,
+    exclude_stops: bool = True,
     threads: int = 1,
     sample: str | None = None,
 ) -> list[GeneResult]:

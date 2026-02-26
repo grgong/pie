@@ -108,10 +108,9 @@ class VariantReader:
                     continue
                 depth, freq, ref_count, alt_count = (
                     self._extract_freq_depth(record, alt_idx))
-                if depth < self._min_depth:
-                    continue
-                if freq < self._min_freq:
-                    continue
+                # min_depth and min_freq filters are deferred to the
+                # grouping phase so that multiallelic merge uses complete
+                # allele depths for the denominator.
                 raw.append((
                     pos0, record.REF, alt_allele,
                     freq, depth, ref_count, alt_count,
@@ -131,17 +130,23 @@ class VariantReader:
             is_multiallelic = pos in multiallelic_pos
             if not is_multiallelic:
                 p, ref, alt, freq, depth, _, _ = group[0]
+                if depth < self._min_depth or freq < self._min_freq:
+                    continue
                 variants.append(Variant(
                     pos=p, ref=ref, alt=alt, freq=freq, depth=depth))
             elif not self._keep_multiallelic:
                 # Skip multiallelic sites by default
                 continue
             else:
-                # Merge: recompute frequencies using allele depths
+                # Merge: recompute frequencies using ALL allele depths
+                # (including alleles that may fall below min_freq or
+                # min_depth) so that the denominator is correct.
                 ref_count = group[0][5]
                 if ref_count > 0 or any(r[6] > 0 for r in group):
                     total_alt = sum(r[6] for r in group)
                     total_depth = ref_count + total_alt
+                    if total_depth < self._min_depth:
+                        continue
                     for r in group:
                         new_freq = (r[6] / total_depth
                                     if total_depth > 0 else 0.0)
@@ -152,6 +157,8 @@ class VariantReader:
                 else:
                     # No raw allele depths available — keep original frequencies
                     for r in group:
+                        if r[4] < self._min_depth or r[3] < self._min_freq:
+                            continue
                         variants.append(Variant(
                             pos=r[0], ref=r[1], alt=r[2],
                             freq=r[3], depth=r[4]))

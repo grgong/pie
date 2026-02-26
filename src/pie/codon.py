@@ -110,9 +110,9 @@ def _build_site_tables(exclude_stops: bool = False) -> tuple[np.ndarray, np.ndar
     return n_sites, s_sites
 
 
-# Default: stop_gained counts as nonsynonymous
+# Include stop_gained as nonsynonymous (used when --include-stop-codons)
 N_SITES, S_SITES = _build_site_tables(exclude_stops=False)
-# Legacy: exclude mutations to stop codons
+# Exclude mutations to stop codons (default, matches NG86/SNPGenie)
 N_SITES_EXCL_STOP, S_SITES_EXCL_STOP = _build_site_tables(exclude_stops=True)
 
 # ---------------------------------------------------------------------------

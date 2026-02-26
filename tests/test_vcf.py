@@ -102,6 +102,51 @@ class TestMultiallelicFiltering:
             positions = [v.pos for v in variants]
             assert 6 not in positions, "multiallelic pos 7 should be skipped even if one ALT filtered"
 
+    def test_keep_multiallelic_freq_uses_complete_depth(self, multiallelic_vcf_file):
+        """Frequencies must be computed from ALL allele depths, not just filtered ones.
+
+        pos 7 decomposed: AD=50,30 (A) and AD=50,20 (C).
+        total_depth = 50 + 30 + 20 = 100.
+        With keep_multiallelic + min_freq=0.25:
+        - ALT=A freq = 30/100 = 0.30 -> passes
+        - ALT=C freq = 20/100 = 0.20 -> filtered
+        BUG (old): if C is pre-filtered, depth=50+30=80, freq(A)=30/80=0.375 (inflated)
+        """
+        with VariantReader(multiallelic_vcf_file, min_freq=0.25, min_depth=0,
+                           min_qual=0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            ma_variants = [v for v in variants if v.pos == 6]
+            assert len(ma_variants) == 1  # only ALT=A passes min_freq
+            v = ma_variants[0]
+            assert v.alt == "A"
+            assert v.depth == 100  # ref(50) + A(30) + C(20)
+            assert abs(v.freq - 0.30) < 1e-6  # 30/100, not 30/80
+
+    def test_keep_multiallelic_depth_uses_complete_depth(self, multiallelic_vcf_file):
+        """min_depth must not pre-filter alleles before multiallelic merge.
+
+        pos 7 decomposed: AD=50,30 (A, per-record depth=80) and
+        AD=50,20 (C, per-record depth=70).
+        With keep_multiallelic + min_depth=75:
+        - Record C has per-record depth 70 < 75
+        - But merged total_depth = 50 + 30 + 20 = 100 >= 75
+        - ALT=A freq = 30/100 = 0.30
+        - ALT=C freq = 20/100 = 0.20
+        BUG (old): C pre-filtered by depth, merge sees only A:
+        total_depth=50+30=80, freq(A)=30/80=0.375 (inflated)
+        """
+        with VariantReader(multiallelic_vcf_file, min_freq=0.0, min_depth=75,
+                           min_qual=0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            ma_variants = [v for v in variants if v.pos == 6]
+            assert len(ma_variants) == 2  # both ALTs survive
+            for v in ma_variants:
+                assert v.depth == 100  # ref(50) + A(30) + C(20)
+            va = next(v for v in ma_variants if v.alt == "A")
+            vc = next(v for v in ma_variants if v.alt == "C")
+            assert abs(va.freq - 0.30) < 1e-6  # 30/100, not 30/80
+            assert abs(vc.freq - 0.20) < 1e-6  # 20/100
+
     def test_non_decomposed_multiallelic_skipped(self, multiallelic_inline_vcf_file):
         """Non-decomposed multiallelic (single line ALT=A,C) is also skipped."""
         with VariantReader(multiallelic_inline_vcf_file, min_freq=0.0, min_depth=0,
