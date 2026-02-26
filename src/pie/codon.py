@@ -69,8 +69,6 @@ def is_stop_codon(index: int) -> bool:
 # ---------------------------------------------------------------------------
 # 3. N_SITES / S_SITES — fractional site counts per position
 # ---------------------------------------------------------------------------
-_base_index = {b: i for i, b in enumerate(_BASES)}
-
 
 def _build_site_tables(exclude_stops: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """Build N_SITES and S_SITES arrays.

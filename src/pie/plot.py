@@ -4,7 +4,6 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
 
 
 def manhattan_plot(
