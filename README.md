@@ -1,5 +1,9 @@
 # pie -- piN/piS Estimator for pool-seq data
 
+<p align="center">
+  <img src="logo.png" alt="pie logo" width="220" />
+</p>
+
 Estimate nonsynonymous (piN) and synonymous (piS) nucleotide diversity
 from pooled sequencing data on large eukaryotic genomes. Reimplements the
 Nei-Gojobori method from SNPGenie in a numpy-vectorized Python stack with
