@@ -89,3 +89,14 @@ class TestMultiallelicFiltering:
             assert len(variants) == 4
             positions = [v.pos for v in variants]
             assert positions.count(6) == 2  # two ALT alleles at pos 7 (0-based 6)
+
+    def test_non_decomposed_multiallelic_skipped(self, multiallelic_inline_vcf_file):
+        """Non-decomposed multiallelic (single line ALT=A,C) is also skipped."""
+        with VariantReader(multiallelic_inline_vcf_file, min_freq=0.0, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            assert len(variants) == 2
+            positions = [v.pos for v in variants]
+            assert 5 in positions
+            assert 194 in positions
+            assert 6 not in positions

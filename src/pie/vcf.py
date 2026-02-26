@@ -61,9 +61,10 @@ class VariantReader:
         """Fetch filtered variants in region (0-based, half-open).
 
         Handles both single-line multiallelic records (``ALT=C,G``) and
-        decomposed records (from ``bcftools norm -m-``).  Records at the
-        same position are merged and allele frequencies recomputed from
-        raw allele depths.
+        decomposed records (from ``bcftools norm -m-``).  By default,
+        positions with multiple ALT alleles are skipped; set
+        ``keep_multiallelic=True`` to merge them instead (frequencies
+        recomputed from raw allele depths).
         """
         region = f"{chrom}:{start + 1}-{end}"
 
