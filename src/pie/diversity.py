@@ -256,13 +256,7 @@ def compute_gene_diversity(
     freq_array = build_allele_freq_array(codons, positions, all_variants, gene.strand)
 
     # Identify polymorphic codons: any position with >1 allele having freq > 0
-    poly_mask = np.zeros(len(codons), dtype=bool)
-    for i in range(len(codons)):
-        for j in range(3):
-            n_alleles = np.sum(freq_array[i, j] > 0)
-            if n_alleles > 1:
-                poly_mask[i] = True
-                break
+    poly_mask = (freq_array > 0).sum(axis=2).max(axis=1) > 1
 
     # Accumulate results
     total_N_sites = 0.0
