@@ -9,6 +9,53 @@ from pooled sequencing data on large eukaryotic genomes. Reimplements the
 Nei-Gojobori method from SNPGenie in a numpy-vectorized Python stack with
 gene-level multiprocessing.
 
+## Comparison with SNPGenie
+
+`pie` reimplements the Nei-Gojobori pool-seq method from
+[SNPGenie](https://github.com/chasewnelson/SNPGenie) (Nelson et al., 2015)
+in a numpy-vectorized Python stack with gene-level multiprocessing.
+
+**Stop codon site counting.**
+SNPGenie excludes stop-producing mutations from site counting: for a
+codon position where one of three possible changes introduces a stop
+codon, only the two remaining sense→sense changes are counted (e.g.,
+AGA pos 1: N = 1/2, S = 1/2). `pie` instead counts stop-gained
+mutations as nonsynonymous by default (AGA pos 1: N = 2/3, S = 1/3),
+following the convention used by tools such as PAML and libsequence. Use
+`--exclude-stop-codons` for SNPGenie-like stop-codon handling.
+
+**Multiallelic sites and frequency overlay.**
+When a VCF is decomposed with `bcftools norm -m-`, a multiallelic site
+(e.g., ALT=C,G) becomes two separate records at the same position.
+SNPGenie processes each record independently with an incremental
+subtract-from-ref / add-to-alt strategy, which can cause the reference
+allele frequency to be double-subtracted. `pie` skips multiallelic sites
+by default. With `--keep-multiallelic`, it groups records by genomic
+position and recomputes frequencies from raw allele depths
+(`freq(alt_i) = AD_i / (AD_ref + ΣAD_alt)`). For all sites, alt
+frequencies are assigned directly and the reference is set to `1 − Σalt`.
+
+**Simplified annotation input.**
+SNPGenie requires a specific GTF format with a single isoform per gene,
+which typically involves manual format conversion and isoform filtering.
+`pie` accepts GFF3 or GTF directly (auto-detected) and automatically
+selects the longest isoform per gene — no preprocessing needed.
+
+**Auto-indexing.**
+Plain VCF files are automatically bgzipped and tabix-indexed; FASTA files
+are indexed via pysam if the `.fai` is missing. No manual preprocessing
+required.
+
+**Performance.**
+Core computations are numpy-vectorized and genes are processed in parallel
+via `multiprocessing.Pool`.
+
+**Validation.**
+A regression test suite pins piN/piS values for 400 real
+*Acyrthosiphon pisum* genes, covering both strand orientations and
+multiallelic sites. On non-multiallelic sites the results match SNPGenie
+with r = 1.0.
+
 ## Installation
 
 ```bash
@@ -218,9 +265,7 @@ gene piN/piS = piN / piS   (NA if piS = 0)
 ## Parallelization
 
 Genes are processed independently via `multiprocessing.Pool`. Each worker
-opens its own VCF and FASTA file handles to avoid shared state. For a
-300 Mb genome with ~30k genes on 8 threads, expect ~5-15 minutes and
-~2-4 GB peak memory.
+opens its own VCF and FASTA file handles to avoid shared state.
 
 ## Testing
 
