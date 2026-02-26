@@ -138,6 +138,22 @@ class TestEndToEnd:
         assert result.exit_code == 0
         assert (out / "manhattan.png").exists()
 
+    def test_keep_multiallelic_flag(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        """--keep-multiallelic flag is accepted and does not break pipeline."""
+        result = runner.invoke(main, [
+            "run",
+            "--vcf", vcf_file,
+            "--gff", gff3_file,
+            "--fasta", ref_fasta,
+            "--outdir", str(tmp_path),
+            "--min-freq", "0",
+            "--min-depth", "0",
+            "--min-qual", "0",
+            "--keep-multiallelic",
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "gene_results.tsv").exists()
+
     def test_gtf_also_works(self, runner, ref_fasta, gtf_file, vcf_file, tmp_path):
         """GTF should produce same results as GFF3."""
         result = runner.invoke(main, [

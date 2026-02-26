@@ -11,12 +11,14 @@ from pie.diversity import compute_gene_diversity, GeneResult
 log = logging.getLogger(__name__)
 
 
-def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual, pass_only):
+def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
+                 pass_only, keep_multiallelic):
     """Initialize per-worker file handles (stored in globals)."""
     global _ref, _vcf
     _ref = ReferenceGenome(fasta_path)
     _vcf = VariantReader(vcf_path, min_freq=min_freq, min_depth=min_depth,
-                         min_qual=min_qual, pass_only=pass_only)
+                         min_qual=min_qual, pass_only=pass_only,
+                         keep_multiallelic=keep_multiallelic)
 
 
 def _worker_cleanup():
@@ -39,6 +41,7 @@ def run_parallel(
     min_depth: int = 10,
     min_qual: float = 20.0,
     pass_only: bool = False,
+    keep_multiallelic: bool = False,
     threads: int = 1,
 ) -> list[GeneResult]:
     """Run piN/piS analysis across all genes.
@@ -50,7 +53,8 @@ def run_parallel(
 
     if threads <= 1:
         # Single-threaded: no multiprocessing overhead
-        _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual, pass_only)
+        _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
+                     pass_only, keep_multiallelic)
         try:
             results = [_process_gene(g) for g in genes]
         finally:
@@ -59,7 +63,8 @@ def run_parallel(
         with Pool(
             processes=threads,
             initializer=_worker_init,
-            initargs=(fasta_path, vcf_path, min_freq, min_depth, min_qual, pass_only),
+            initargs=(fasta_path, vcf_path, min_freq, min_depth, min_qual,
+                      pass_only, keep_multiallelic),
         ) as pool:
             results = pool.map(_process_gene, genes)
 

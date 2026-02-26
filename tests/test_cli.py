@@ -36,6 +36,11 @@ class TestRunCommand:
         assert (tmp_path / "window_results.tsv").exists()
         assert (tmp_path / "summary.tsv").exists()
 
+    def test_help_shows_keep_multiallelic(self, runner):
+        result = runner.invoke(main, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--keep-multiallelic" in result.output
+
     def test_run_with_threading(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         result = runner.invoke(main, [
             "run",
