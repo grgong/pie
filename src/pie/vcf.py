@@ -71,6 +71,10 @@ class VariantReader:
         # Collect per-record data including raw allele depths
         # (pos, ref, alt, freq, depth, ref_count, alt_count)
         raw: list[tuple[int, str, str, float, int, int, int]] = []
+        # Track positions with multiple ALT alleles BEFORE per-allele
+        # filtering, so multiallelic detection is not affected by thresholds.
+        multiallelic_pos: set[int] = set()
+        seen_pos: dict[int, int] = {}  # pos -> count of valid SNP alleles
         for record in self._vcf(region):
             if self._pass_only and record.FILTER is not None:
                 continue
@@ -79,6 +83,13 @@ class VariantReader:
             # REF must be a single valid nucleotide for a SNP
             if record.REF not in _VALID_BASES:
                 continue
+
+            pos0 = record.POS - 1
+            # Count valid SNP alleles at this position (before freq/depth filter)
+            n_valid = sum(1 for a in record.ALT if a in _VALID_BASES)
+            seen_pos[pos0] = seen_pos.get(pos0, 0) + n_valid
+            if seen_pos[pos0] > 1:
+                multiallelic_pos.add(pos0)
 
             for alt_idx, alt_allele in enumerate(record.ALT):
                 # Per-allele SNP check: single valid nucleotide
@@ -91,7 +102,7 @@ class VariantReader:
                 if freq < self._min_freq:
                     continue
                 raw.append((
-                    record.POS - 1, record.REF, alt_allele,
+                    pos0, record.REF, alt_allele,
                     freq, depth, ref_count, alt_count,
                 ))
 
@@ -106,7 +117,8 @@ class VariantReader:
         variants: list[Variant] = []
         for pos in sorted(by_pos):
             group = by_pos[pos]
-            if len(group) == 1:
+            is_multiallelic = pos in multiallelic_pos
+            if not is_multiallelic:
                 p, ref, alt, freq, depth, _, _ = group[0]
                 variants.append(Variant(
                     pos=p, ref=ref, alt=alt, freq=freq, depth=depth))

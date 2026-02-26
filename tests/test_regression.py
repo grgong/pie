@@ -142,7 +142,7 @@ class TestRealDataRegression:
         g = gene_df[gene_df["gene_id"].str.contains("Apisum_003662")].iloc[0]
 
         assert g["n_codons"] == 418
-        assert g["n_variants"] == 80
+        assert g["n_variants"] == 79
         assert g["n_poly_codons"] == 72
         assert abs(g["piN"] - 0.012722) < 1e-5
         assert abs(g["piS"] - 0.013534) < 1e-5

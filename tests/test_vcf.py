@@ -90,6 +90,19 @@ class TestMultiallelicFiltering:
             positions = [v.pos for v in variants]
             assert positions.count(6) == 2  # two ALT alleles at pos 7 (0-based 6)
 
+    def test_multiallelic_still_skipped_after_freq_filter(self, multiallelic_vcf_file):
+        """Multiallelic site must be skipped even when one ALT is filtered by min_freq.
+
+        pos 7 decomposed records: AD=50,30 (freq=0.375) and AD=50,20 (freq=0.286).
+        With min_freq=0.30, ALT=C (0.286) is filtered out but the site is still
+        multiallelic and must be skipped.
+        """
+        with VariantReader(multiallelic_vcf_file, min_freq=0.30, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            positions = [v.pos for v in variants]
+            assert 6 not in positions, "multiallelic pos 7 should be skipped even if one ALT filtered"
+
     def test_non_decomposed_multiallelic_skipped(self, multiallelic_inline_vcf_file):
         """Non-decomposed multiallelic (single line ALT=A,C) is also skipped."""
         with VariantReader(multiallelic_inline_vcf_file, min_freq=0.0, min_depth=0,
