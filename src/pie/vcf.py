@@ -39,12 +39,13 @@ def ensure_indexed(vcf_path: str) -> str:
 class VariantReader:
     def __init__(self, vcf_path: str, min_freq: float = 0.01,
                  min_depth: int = 10, min_qual: float = 20.0,
-                 pass_only: bool = False):
+                 pass_only: bool = False, keep_multiallelic: bool = False):
         self._vcf_path = vcf_path
         self._min_freq = min_freq
         self._min_depth = min_depth
         self._min_qual = min_qual
         self._pass_only = pass_only
+        self._keep_multiallelic = keep_multiallelic
         self._vcf = VCF(vcf_path)
 
     def close(self):
@@ -108,6 +109,9 @@ class VariantReader:
                 p, ref, alt, freq, depth, _, _ = group[0]
                 variants.append(Variant(
                     pos=p, ref=ref, alt=alt, freq=freq, depth=depth))
+            elif not self._keep_multiallelic:
+                # Skip multiallelic sites by default
+                continue
             else:
                 # Merge: recompute frequencies using allele depths
                 ref_count = group[0][5]
