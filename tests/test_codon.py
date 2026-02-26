@@ -8,8 +8,10 @@ from pie.codon import (
     INDEX_TO_CODON,
     N_DIFFS,
     N_SITES,
+    N_SITES_EXCL_STOP,
     S_DIFFS,
     S_SITES,
+    S_SITES_EXCL_STOP,
     codon_to_index,
     is_stop_codon,
 )
@@ -104,12 +106,34 @@ class TestSiteCounts:
         assert abs(N_SITES[idx, 2] - 0.0) < 1e-10
 
     def test_stop_codons_zero(self):
-        """Stop codons should have 0 sites."""
+        """Stop codons should have 0 sites (both modes)."""
         for stop in ["TAA", "TAG", "TGA"]:
             idx = codon_to_index(stop)
             for pos in range(3):
                 assert N_SITES[idx, pos] == 0.0
                 assert S_SITES[idx, pos] == 0.0
+                assert N_SITES_EXCL_STOP[idx, pos] == 0.0
+                assert S_SITES_EXCL_STOP[idx, pos] == 0.0
+
+    def test_include_stop_increases_n_sites(self):
+        """Including stop_gained as nonsynonymous increases N_sites for affected codons."""
+        # TAC (Tyr) pos 2: mutations → TAA(*), TAG(*), TAT(Tyr)
+        # Exclude: only TAT(syn), N=0/1, S=1/1
+        # Include: TAA(N), TAG(N), TAT(S) → N=2/3, S=1/3
+        idx = codon_to_index("TAC")
+        assert abs(N_SITES_EXCL_STOP[idx, 2] - 0.0) < 1e-10
+        assert abs(S_SITES_EXCL_STOP[idx, 2] - 1.0) < 1e-10
+        assert abs(N_SITES[idx, 2] - 2 / 3) < 1e-10
+        assert abs(S_SITES[idx, 2] - 1 / 3) < 1e-10
+
+    def test_excl_stop_sites_sum_to_one(self):
+        """N_SITES_EXCL_STOP + S_SITES_EXCL_STOP = 1.0 per position for sense codons."""
+        for i in range(64):
+            if AMINO_ACID[i] == "*":
+                continue
+            for pos in range(3):
+                total = N_SITES_EXCL_STOP[i, pos] + S_SITES_EXCL_STOP[i, pos]
+                assert abs(total - 1.0) < 1e-10
 
 
 class TestDiffCounts:

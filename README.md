@@ -71,6 +71,7 @@ pie run --vcf FILE --gff FILE --fasta FILE --outdir DIR [OPTIONS]
 | `--min-qual` | 20.0 | Minimum variant QUAL score |
 | `--pass-only` | off | Only use PASS-filtered variants |
 | `--keep-multiallelic` | off | Keep and merge multiallelic sites instead of skipping them |
+| `--exclude-stop-codons` | off | Exclude stop-gained mutations from piN (by default they count as nonsynonymous) |
 | `--window-size` | 1000 | Sliding window size in bp |
 | `--window-step` | 100 | Sliding window step in bp |
 | `--threads` | 1 | Number of parallel worker processes |
@@ -159,9 +160,12 @@ For each of the 64 codons, a precomputed lookup table stores fractional
 nonsynonymous (N) and synonymous (S) site counts at each of the three
 codon positions. Each position is evaluated by considering all three
 possible single-nucleotide changes and classifying them as synonymous or
-nonsynonymous under the standard genetic code. For example, if 2 of 3
-changes are nonsynonymous, that position contributes 2/3 N sites and 1/3
-S sites.
+nonsynonymous under the standard genetic code. Mutations that introduce a
+premature stop codon (stop-gained) are counted as nonsynonymous by
+default. For example, if 2 of 3 changes are nonsynonymous (including any
+that produce a stop codon), that position contributes 2/3 N sites and 1/3
+S sites. Use `--exclude-stop-codons` to exclude these mutations from site
+counting instead.
 
 ### Handling pool-seq frequencies
 
@@ -186,9 +190,13 @@ pathways (those not passing through a stop codon intermediate).
 
 ### Edge cases
 
-- **Stop codons in polymorphic codons:** If allele frequencies produce
-  stop codon haplotypes, those are removed and remaining frequencies are
-  renormalized. A warning is logged when stop codon frequency exceeds 1%.
+- **Stop-gained mutations:** By default, SNPs that introduce a premature
+  stop codon are treated as nonsynonymous changes, consistent with the
+  standard approach in population genetics (e.g., PAML, libsequence).
+  Both the site counting (N_sites) and pairwise difference (N_diffs)
+  calculations include these mutations. With `--exclude-stop-codons`,
+  stop-gained alleles are removed from polymorphic codons and excluded
+  from site counting (legacy behavior).
 - **Exon-spanning codons:** CDS exons are concatenated in genomic order
   before codon extraction. Codons split across exon boundaries are handled
   by tracking per-base genomic positions through the concatenated sequence.

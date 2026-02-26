@@ -14,8 +14,10 @@ from pie.codon import (
     CODON_TO_INDEX,
     N_DIFFS,
     N_SITES,
+    N_SITES_EXCL_STOP,
     S_DIFFS,
     S_SITES,
+    S_SITES_EXCL_STOP,
     AMINO_ACID,
     is_stop_codon,
 )
@@ -154,15 +156,24 @@ def build_allele_freq_array(
 # ---------------------------------------------------------------------------
 # 2. Compute diversity for a single codon
 # ---------------------------------------------------------------------------
-def compute_codon_diversity(freq: np.ndarray) -> dict:
+def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> dict:
     """Compute N/S sites and diffs for a single codon.
 
     Args:
         freq: shape (3, 4) allele frequency array for one codon.
+        exclude_stops: If True, remove stop codon alleles and renormalize
+            (legacy behavior). If False (default), keep stop alleles and
+            count them as nonsynonymous.
 
     Returns:
         dict with keys N_sites, S_sites, N_diffs, S_diffs.
     """
+    # Choose site tables
+    if exclude_stops:
+        n_sites_tbl, s_sites_tbl = N_SITES_EXCL_STOP, S_SITES_EXCL_STOP
+    else:
+        n_sites_tbl, s_sites_tbl = N_SITES, S_SITES
+
     # Enumerate possible codons: alleles with freq > 0 at each position
     alleles_per_pos = []
     for pos in range(3):
@@ -180,30 +191,30 @@ def compute_codon_diversity(freq: np.ndarray) -> dict:
         codon_idx = CODON_TO_INDEX[codon_str]
         codon_probs.append((codon_str, prob, codon_idx))
 
-    # Handle stop codons: remove and renormalize
-    stop_freq = sum(p for _, p, idx in codon_probs if is_stop_codon(idx))
-    if stop_freq > 0.01:
-        log.warning(
-            "Stop codon frequency %.4f > 1%% in polymorphic codon; "
-            "removing and renormalizing",
-            stop_freq,
-        )
+    # Handle stop codons
+    if exclude_stops:
+        stop_freq = sum(p for _, p, idx in codon_probs if is_stop_codon(idx))
+        if stop_freq > 0.01:
+            log.warning(
+                "Stop codon frequency %.4f > 1%% in polymorphic codon; "
+                "removing and renormalizing",
+                stop_freq,
+            )
 
-    if stop_freq > 0:
-        codon_probs = [(s, p, i) for s, p, i in codon_probs if not is_stop_codon(i)]
-        total = sum(p for _, p, _ in codon_probs)
-        if total > 0:
-            codon_probs = [(s, p / total, i) for s, p, i in codon_probs]
-        else:
-            # All codons are stops (shouldn't happen); return zeros
-            return {"N_sites": 0.0, "S_sites": 0.0, "N_diffs": 0.0, "S_diffs": 0.0}
+        if stop_freq > 0:
+            codon_probs = [(s, p, i) for s, p, i in codon_probs if not is_stop_codon(i)]
+            total = sum(p for _, p, _ in codon_probs)
+            if total > 0:
+                codon_probs = [(s, p / total, i) for s, p, i in codon_probs]
+            else:
+                return {"N_sites": 0.0, "S_sites": 0.0, "N_diffs": 0.0, "S_diffs": 0.0}
 
-    # Weighted site counts: N_sites = sum(freq_i * N_SITES[codon_i].sum())
+    # Weighted site counts
     n_sites = 0.0
     s_sites = 0.0
     for _, prob, idx in codon_probs:
-        n_sites += prob * float(N_SITES[idx].sum())
-        s_sites += prob * float(S_SITES[idx].sum())
+        n_sites += prob * float(n_sites_tbl[idx].sum())
+        s_sites += prob * float(s_sites_tbl[idx].sum())
 
     # Weighted pairwise diffs
     n_diffs = 0.0
@@ -232,6 +243,7 @@ def compute_gene_diversity(
     gene: GeneModel,
     ref: ReferenceGenome,
     vcf: VariantReader,
+    exclude_stops: bool = False,
 ) -> GeneResult:
     """Compute per-gene piN/piS diversity.
 
@@ -239,6 +251,9 @@ def compute_gene_diversity(
         gene: GeneModel with CDS exon coordinates.
         ref: ReferenceGenome for sequence access.
         vcf: VariantReader for variant access.
+        exclude_stops: If True, exclude stop_gained mutations from piN
+            calculation (legacy behavior). If False (default), count them
+            as nonsynonymous.
 
     Returns:
         GeneResult with accumulated N/S sites and diffs.
@@ -255,6 +270,12 @@ def compute_gene_diversity(
     # Build allele frequency array
     freq_array = build_allele_freq_array(codons, positions, all_variants, gene.strand)
 
+    # Choose site tables
+    if exclude_stops:
+        n_sites_tbl, s_sites_tbl = N_SITES_EXCL_STOP, S_SITES_EXCL_STOP
+    else:
+        n_sites_tbl, s_sites_tbl = N_SITES, S_SITES
+
     # Identify polymorphic codons: any position with >1 allele having freq > 0
     poly_mask = (freq_array > 0).sum(axis=2).max(axis=1) > 1
 
@@ -268,7 +289,7 @@ def compute_gene_diversity(
     codon_results: list[CodonResult] = []
 
     for i, codon_str in enumerate(codons):
-        # Skip stop codons entirely
+        # Skip terminal stop codons (always, regardless of mode)
         idx = CODON_TO_INDEX.get(codon_str)
         if idx is not None and is_stop_codon(idx):
             continue
@@ -280,7 +301,7 @@ def compute_gene_diversity(
         if poly_mask[i]:
             # Full diversity computation for polymorphic codons
             n_poly += 1
-            result = compute_codon_diversity(freq_array[i])
+            result = compute_codon_diversity(freq_array[i], exclude_stops=exclude_stops)
             cr = CodonResult(
                 chrom=chrom,
                 pos1=pos1,
@@ -292,8 +313,8 @@ def compute_gene_diversity(
         else:
             # Monomorphic: only site counts, diffs = 0
             if idx is not None:
-                n_s = float(N_SITES[idx].sum())
-                s_s = float(S_SITES[idx].sum())
+                n_s = float(n_sites_tbl[idx].sum())
+                s_s = float(s_sites_tbl[idx].sum())
             else:
                 n_s = 0.0
                 s_s = 0.0

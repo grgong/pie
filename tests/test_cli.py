@@ -41,6 +41,27 @@ class TestRunCommand:
         assert result.exit_code == 0
         assert "--keep-multiallelic" in result.output
 
+    def test_help_shows_exclude_stop_codons(self, runner):
+        result = runner.invoke(main, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--exclude-stop-codons" in result.output
+
+    def test_exclude_stop_codons_flag(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        """--exclude-stop-codons flag is accepted and runs successfully."""
+        result = runner.invoke(main, [
+            "run",
+            "--vcf", vcf_file,
+            "--gff", gff3_file,
+            "--fasta", ref_fasta,
+            "--outdir", str(tmp_path),
+            "--min-freq", "0",
+            "--min-depth", "0",
+            "--min-qual", "0",
+            "--exclude-stop-codons",
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "gene_results.tsv").exists()
+
     def test_run_with_threading(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         result = runner.invoke(main, [
             "run",

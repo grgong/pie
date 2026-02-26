@@ -115,14 +115,27 @@ class TestComputeCodonDiversity:
         assert result["S_diffs"] == 0.0
         assert abs(result["N_diffs"] - 0.18) < 1e-10  # 2 * 0.9 * 0.1 * 1.0
 
-    def test_stop_codon_renormalized(self):
-        """TGG->TGA (stop) at pos3: after removing stop, only TGG remains."""
+    def test_stop_gained_as_nonsynonymous(self):
+        """TGG->TGA (stop_gained): counts as nonsynonymous by default."""
         freq = np.zeros((3, 4))
         freq[0, 3] = 1.0  # T
         freq[1, 2] = 1.0  # G
         freq[2, 2] = 0.95  # G (TGG=Trp)
         freq[2, 0] = 0.05  # A (TGA=Stop)
         result = compute_codon_diversity(freq)
+        # TGG->TGA is nonsynonymous (Trp->Stop)
+        # N_diffs = 2 * 0.95 * 0.05 * 1.0 = 0.095
+        assert abs(result["N_diffs"] - 0.095) < 1e-10
+        assert result["S_diffs"] == 0.0
+
+    def test_stop_codon_excluded_legacy(self):
+        """TGG->TGA with exclude_stops=True: stop removed, old behavior."""
+        freq = np.zeros((3, 4))
+        freq[0, 3] = 1.0  # T
+        freq[1, 2] = 1.0  # G
+        freq[2, 2] = 0.95  # G (TGG=Trp)
+        freq[2, 0] = 0.05  # A (TGA=Stop)
+        result = compute_codon_diversity(freq, exclude_stops=True)
         # After stop removal and renormalization, only TGG remains
         assert result["N_diffs"] == 0.0
         assert result["S_diffs"] == 0.0

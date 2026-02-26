@@ -69,34 +69,53 @@ def is_stop_codon(index: int) -> bool:
 # ---------------------------------------------------------------------------
 # 3. N_SITES / S_SITES — fractional site counts per position
 # ---------------------------------------------------------------------------
-N_SITES: np.ndarray = np.zeros((64, 3), dtype=np.float64)
-S_SITES: np.ndarray = np.zeros((64, 3), dtype=np.float64)
-
 _base_index = {b: i for i, b in enumerate(_BASES)}
 
-for _i in range(64):
-    _codon = INDEX_TO_CODON[_i]
-    _aa = AMINO_ACID[_i]
-    if _aa == "*":
-        # Stop codons get 0 at all positions
-        continue
-    for _pos in range(3):
-        _n_count = 0
-        _s_count = 0
-        for _alt in _BASES:
-            if _alt == _codon[_pos]:
-                continue
-            _mutant = _codon[:_pos] + _alt + _codon[_pos + 1 :]
-            _mut_aa = _GENETIC_CODE[_mutant]
-            if _mut_aa == "*":
-                continue  # Exclude mutations to stop codons
-            if _mut_aa == _aa:
-                _s_count += 1
-            else:
-                _n_count += 1
-        _valid = _n_count + _s_count
-        N_SITES[_i, _pos] = _n_count / _valid if _valid > 0 else 0.0
-        S_SITES[_i, _pos] = _s_count / _valid if _valid > 0 else 0.0
+
+def _build_site_tables(exclude_stops: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Build N_SITES and S_SITES arrays.
+
+    Args:
+        exclude_stops: If True, mutations to stop codons are excluded from
+            site counting. If False (default), mutations to stop codons
+            count as nonsynonymous.
+    """
+    n_sites = np.zeros((64, 3), dtype=np.float64)
+    s_sites = np.zeros((64, 3), dtype=np.float64)
+
+    for i in range(64):
+        codon = INDEX_TO_CODON[i]
+        aa = AMINO_ACID[i]
+        if aa == "*":
+            # Terminal stop codons get 0 at all positions
+            continue
+        for pos in range(3):
+            n_count = 0
+            s_count = 0
+            for alt in _BASES:
+                if alt == codon[pos]:
+                    continue
+                mutant = codon[:pos] + alt + codon[pos + 1:]
+                mut_aa = _GENETIC_CODE[mutant]
+                if exclude_stops and mut_aa == "*":
+                    continue
+                if mut_aa == aa:
+                    s_count += 1
+                else:
+                    n_count += 1
+            valid = n_count + s_count
+            n_sites[i, pos] = n_count / valid if valid > 0 else 0.0
+            s_sites[i, pos] = s_count / valid if valid > 0 else 0.0
+
+    n_sites.flags.writeable = False
+    s_sites.flags.writeable = False
+    return n_sites, s_sites
+
+
+# Default: stop_gained counts as nonsynonymous
+N_SITES, S_SITES = _build_site_tables(exclude_stops=False)
+# Legacy: exclude mutations to stop codons
+N_SITES_EXCL_STOP, S_SITES_EXCL_STOP = _build_site_tables(exclude_stops=True)
 
 # ---------------------------------------------------------------------------
 # 4. N_DIFFS / S_DIFFS — pairwise differences
@@ -168,8 +187,6 @@ for _i in range(64):
         S_DIFFS[_j, _i] = S_DIFFS[_i, _j]
 
 # Make arrays read-only
-N_SITES.flags.writeable = False
-S_SITES.flags.writeable = False
 N_DIFFS.flags.writeable = False
 S_DIFFS.flags.writeable = False
 AMINO_ACID.flags.writeable = False
