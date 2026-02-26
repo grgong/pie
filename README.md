@@ -1,7 +1,7 @@
 # pie -- piN/piS Estimator for pool-seq data
 
 <p align="center">
-  <img src="logo.png" alt="pie logo" width="220" />
+  <img src="logo.png" alt="pie logo" width="400" />
 </p>
 
 Estimate nonsynonymous (piN) and synonymous (piS) nucleotide diversity
