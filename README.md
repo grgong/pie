@@ -43,7 +43,7 @@ pie plot \
 
 | Input | Format | Notes |
 |-------|--------|-------|
-| VCF | `.vcf` or `.vcf.gz` | Freebayes pool-seq mode. Must be biallelic and pre-decomposed (`bcftools norm -m-`). Plain VCF is auto-bgzipped; missing `.tbi` index is auto-created. |
+| VCF | `.vcf` or `.vcf.gz` | Freebayes pool-seq mode. Multiallelic sites are skipped by default; use `--keep-multiallelic` to merge them instead. Accepts both decomposed (`bcftools norm -m-`) and non-decomposed VCFs. Plain VCF is auto-bgzipped; missing `.tbi` index is auto-created. |
 | Annotation | GFF3 or GTF | Must contain gene, mRNA/transcript, and CDS features. Format is auto-detected. |
 | Reference | FASTA | Must match the VCF reference. Auto-indexed by pysam if `.fai` is missing. |
 
@@ -70,6 +70,7 @@ pie run --vcf FILE --gff FILE --fasta FILE --outdir DIR [OPTIONS]
 | `--min-depth` | 10 | Minimum read depth at variant site |
 | `--min-qual` | 20.0 | Minimum variant QUAL score |
 | `--pass-only` | off | Only use PASS-filtered variants |
+| `--keep-multiallelic` | off | Keep and merge multiallelic sites instead of skipping them |
 | `--window-size` | 1000 | Sliding window size in bp |
 | `--window-step` | 100 | Sliding window step in bp |
 | `--threads` | 1 | Number of parallel worker processes |
