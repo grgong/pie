@@ -2,8 +2,8 @@
 
 ## Acyrthosiphon pisum pool-seq dataset
 
-Mini test dataset extracted from pea aphid (*Acyrthosiphon pisum*) pool-seq
-data (sample SRR27175631). Contains 4 chromosomes (X, 1, 2, 3) with ~100
+A subset of pea aphid (*Acyrthosiphon pisum*) pool-seq data
+(sample SRR27175631). Contains 4 chromosomes (X, 1, 2, 3) with ~100
 protein-coding genes each (400 genes total, ~92k SNPs).
 
 ### Setup
@@ -30,12 +30,3 @@ pie run \
   --outdir results/Acyrthosiphon_pisum \
   --threads 4
 ```
-
-### Source
-
-Created by `scripts/create_real_testset.sh` from:
-- VCF: `SRR27175631.filtered.snps.vcf.gz` (freebayes, filtered)
-- GFF: NCBI *A. pisum* annotation (`Acyrthosiphon_pisum.rename.gff`)
-- FASTA: NCBI *A. pisum* genome assembly
-
-Coordinates are shifted so each chromosome subregion starts at position 1.
