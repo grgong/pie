@@ -36,17 +36,29 @@ def ensure_indexed(vcf_path: str) -> str:
     return vcf_path
 
 
+def get_sample_names(vcf_path: str) -> list[str]:
+    """Return the list of sample names from a VCF file."""
+    vcf = VCF(vcf_path)
+    samples = list(vcf.samples)
+    vcf.close()
+    return samples
+
+
 class VariantReader:
     def __init__(self, vcf_path: str, min_freq: float = 0.01,
                  min_depth: int = 10, min_qual: float = 20.0,
-                 pass_only: bool = False, keep_multiallelic: bool = False):
+                 pass_only: bool = False, keep_multiallelic: bool = False,
+                 sample: str | None = None):
         self._vcf_path = vcf_path
         self._min_freq = min_freq
         self._min_depth = min_depth
         self._min_qual = min_qual
         self._pass_only = pass_only
         self._keep_multiallelic = keep_multiallelic
-        self._vcf = VCF(vcf_path)
+        if sample is not None:
+            self._vcf = VCF(vcf_path, samples=[sample])
+        else:
+            self._vcf = VCF(vcf_path)
 
     def close(self):
         self._vcf.close()

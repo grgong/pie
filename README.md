@@ -94,7 +94,7 @@ pie plot \
 
 | Input | Format | Notes |
 |-------|--------|-------|
-| VCF | `.vcf` or `.vcf.gz` | Freebayes pool-seq mode. Multiallelic sites are skipped by default; use `--keep-multiallelic` to merge them instead. Accepts both decomposed (`bcftools norm -m-`) and non-decomposed VCFs. Plain VCF is auto-bgzipped; missing `.tbi` index is auto-created. |
+| VCF | `.vcf` or `.vcf.gz` | Freebayes pool-seq mode. Single- or multi-sample; use `--sample` for multi-sample VCFs. Multiallelic sites are skipped by default; use `--keep-multiallelic` to merge them instead. Accepts both decomposed (`bcftools norm -m-`) and non-decomposed VCFs. Plain VCF is auto-bgzipped; missing `.tbi` index is auto-created. |
 | Annotation | GFF3 or GTF | Must contain gene, mRNA/transcript, and CDS features. Format is auto-detected. |
 | Reference | FASTA | Must match the VCF reference. Auto-indexed by pysam if `.fai` is missing. |
 
@@ -126,6 +126,7 @@ pie run --vcf FILE --gff FILE --fasta FILE --outdir DIR [OPTIONS]
 | `--window-size` | 1000 | Sliding window size in bp |
 | `--window-step` | 100 | Sliding window step in bp |
 | `--threads` | 1 | Number of parallel worker processes |
+| `--sample` | auto | Sample name to analyse (required for multi-sample VCFs) |
 
 ### `pie plot`
 
@@ -152,9 +153,25 @@ pie summary SUMMARY_FILE
 
 Takes the path to `summary.tsv` as a positional argument.
 
+## Multi-sample VCFs
+
+By default, `pie` expects a single-sample VCF. If the VCF contains two or
+more samples, `pie` will abort and list the available sample names. Use
+`--sample` to select one:
+
+```bash
+pie run --vcf multi.vcf.gz --sample pool_A --gff genes.gff3 --fasta ref.fa --outdir results/
+```
+
+When `--sample` is given, output files are prefixed with the sample name
+(e.g., `pool_A.gene_results.tsv`, `pool_A.window_results.tsv`,
+`pool_A.summary.tsv`). Single-sample VCFs do not require `--sample` and
+produce unprefixed filenames as before.
+
 ## Output files
 
-All outputs are written to `--outdir`.
+All outputs are written to `--outdir`. When `--sample` is specified, each
+filename is prefixed with `{sample}.` (e.g., `pool_A.gene_results.tsv`).
 
 ### `gene_results.tsv`
 
