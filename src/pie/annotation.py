@@ -21,21 +21,6 @@ class GeneModel:
         return sum(end - start for _, start, end in self.cds_exons)
 
 
-def _detect_format(path: str) -> str:
-    """Detect whether a file is GFF3 or GTF."""
-    with open(path) as f:
-        for line in f:
-            if line.startswith("#"):
-                if "gff-version" in line.lower():
-                    return "gff3"
-                continue
-            if "ID=" in line or "Parent=" in line:
-                return "gff3"
-            if 'gene_id "' in line or "gene_id '" in line:
-                return "gtf"
-    return "gff3"
-
-
 def parse_annotations(path: str) -> list[GeneModel]:
     """Parse GFF3 or GTF, select longest isoform per gene.
 

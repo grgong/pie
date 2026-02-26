@@ -1,7 +1,6 @@
 """Tests for the core piN/piS diversity engine."""
 
 import numpy as np
-import pytest
 from pie.codon import codon_to_index, N_SITES, S_SITES
 from pie.diversity import (
     build_allele_freq_array,

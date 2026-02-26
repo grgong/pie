@@ -1,4 +1,3 @@
-import pytest
 import pandas as pd
 from pie.plot import manhattan_plot
 

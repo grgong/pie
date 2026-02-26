@@ -1,6 +1,5 @@
 """Tests for gene-level multiprocessing parallel runner."""
 
-import pytest
 from pie.parallel import run_parallel
 from pie.diversity import GeneResult
 

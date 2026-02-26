@@ -18,7 +18,6 @@ from pie.codon import (
     S_DIFFS,
     S_SITES,
     S_SITES_EXCL_STOP,
-    AMINO_ACID,
     is_stop_codon,
 )
 from pie.annotation import GeneModel

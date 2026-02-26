@@ -1,4 +1,3 @@
-import pytest
 from pie.reference import ReferenceGenome
 
 

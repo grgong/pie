@@ -1,4 +1,3 @@
-import pytest
 import os
 import shutil
 from pie.vcf import ensure_indexed, VariantReader

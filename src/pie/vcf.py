@@ -49,7 +49,6 @@ class VariantReader:
                  min_depth: int = 10, min_qual: float = 20.0,
                  pass_only: bool = False, keep_multiallelic: bool = False,
                  sample: str | None = None):
-        self._vcf_path = vcf_path
         self._min_freq = min_freq
         self._min_depth = min_depth
         self._min_qual = min_qual

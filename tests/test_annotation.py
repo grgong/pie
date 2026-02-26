@@ -1,4 +1,3 @@
-import pytest
 from pie.annotation import parse_annotations, GeneModel
 
 

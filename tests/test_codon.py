@@ -171,7 +171,6 @@ class TestDiffCounts:
     def test_total_diffs_equal_hamming(self):
         """For any non-stop codon pair, N_DIFFS + S_DIFFS should equal the number
         of differing positions (if no stop-codon pathways are skipped entirely)."""
-        bases = "ACGT"
         for i in range(64):
             if AMINO_ACID[i] == "*":
                 continue
