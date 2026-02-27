@@ -4,6 +4,59 @@ from pie.io import write_gene_results, write_window_results, write_summary
 from pie.diversity import GeneResult, CodonResult
 
 
+class TestIndividualModeColumns:
+    def _make_result(self, n_samples=None, call_rates=None):
+        """Helper to create a GeneResult with optional ind-mode metadata."""
+        return GeneResult(
+            gene_id="gene1", transcript_id="tx1", chrom="chr1",
+            start=0, end=90, strand="+", n_codons=29, n_poly_codons=2,
+            N_sites=59.0, S_sites=27.0, N_diffs=0.42, S_diffs=0.32,
+            mean_variant_depth=100.0, n_variants=2,
+            n_samples=n_samples, call_rates=call_rates,
+        )
+
+    def test_pool_mode_no_extra_columns(self, tmp_path):
+        """Pool mode: n_samples=None -> no n_samples/mean_call_rate columns."""
+        results = [self._make_result()]
+        path = str(tmp_path / "gene_results.tsv")
+        write_gene_results(results, path)
+        df = pd.read_csv(path, sep="\t")
+        assert "n_samples" not in df.columns
+        assert "mean_call_rate" not in df.columns
+
+    def test_individual_mode_extra_columns(self, tmp_path):
+        """Individual mode: n_samples set -> extra columns present."""
+        results = [self._make_result(n_samples=4, call_rates=[0.75, 1.0])]
+        path = str(tmp_path / "gene_results.tsv")
+        write_gene_results(results, path)
+        df = pd.read_csv(path, sep="\t")
+        assert "n_samples" in df.columns
+        assert "mean_call_rate" in df.columns
+        assert df.iloc[0]["n_samples"] == 4
+        assert abs(df.iloc[0]["mean_call_rate"] - 0.875) < 1e-6  # (0.75+1.0)/2
+
+    def test_summary_pool_mode(self, tmp_path):
+        """Pool mode summary: no n_samples_selected/mean_call_rate."""
+        results = [self._make_result()]
+        path = str(tmp_path / "summary.tsv")
+        write_summary(results, path)
+        df = pd.read_csv(path, sep="\t")
+        assert "n_samples_selected" not in df.columns
+        assert "mean_call_rate" not in df.columns
+
+    def test_summary_individual_mode(self, tmp_path):
+        """Individual mode summary: includes n_samples_selected and mean_call_rate."""
+        r1 = self._make_result(n_samples=4, call_rates=[0.75, 1.0])
+        r2 = self._make_result(n_samples=4, call_rates=[1.0])
+        results = [r1, r2]
+        path = str(tmp_path / "summary.tsv")
+        write_summary(results, path)
+        df = pd.read_csv(path, sep="\t")
+        assert df.iloc[0]["n_samples_selected"] == 4
+        # Variant-site-weighted: (0.75 + 1.0 + 1.0) / 3 = 0.9167
+        assert abs(df.iloc[0]["mean_call_rate"] - (0.75 + 1.0 + 1.0) / 3) < 1e-4
+
+
 @pytest.fixture
 def sample_results():
     return [
