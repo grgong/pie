@@ -16,28 +16,41 @@ Performance comparison between pie and [SNPGenie](https://github.com/chasewnelso
 
 ## Results
 
-3 replicates per condition, run on a SLURM node with 8 CPUs.
+3 replicates per condition, login node with 8 CPUs. "Cold" = annotation DB rebuilt each run; "warm" = cached `.pie.db` reused.
 
 ### pie vs SNPGenie
 
 | Tool | Threads | Wall time (s) | Speedup |
 |------|--------:|-------------:|--------:|
-| SNPGenie | 1 | 184.8 ± 5.7 | ref |
-| pie | 1 | 15.8 ± 2.0 | **11.7x** |
-| pie | 2 | 14.6 ± 0.0 | **12.7x** |
-| pie | 4 | 14.3 ± 0.1 | **13.0x** |
-| pie | 8 | 14.5 ± 0.1 | **12.8x** |
+| SNPGenie | 1 | 180.2 ± 0.8 | ref |
+| pie cold | 1 | 4.7 ± 0.9 | **38.7x** |
+| pie cold | 2 | 3.7 ± 0.0 | **49.3x** |
+| pie cold | 4 | 3.7 ± 0.0 | **48.4x** |
+| pie cold | 8 | 3.7 ± 0.0 | **48.2x** |
+| pie warm | 1 | 3.0 ± 0.0 | **60.8x** |
+| pie warm | 2 | 2.4 ± 0.0 | **73.7x** |
+| pie warm | 4 | 2.6 ± 0.0 | **70.2x** |
+| pie warm | 8 | 2.6 ± 0.0 | **70.3x** |
 
-pie is **~12x faster** than SNPGenie in single-threaded mode.
+pie is **~39x faster** than SNPGenie single-threaded (cold), or **~61x** with cached annotations (warm).
 
-### pie thread scaling
+### Optimizations (vs previous pie version)
+
+| Optimization | Effect |
+|---|---|
+| `gffutils` strategy: `merge` → `create_unique` with fallback | ~12x faster DB creation |
+| Annotation DB cache (`.pie.db` with checksum validation) | near-instant reuse on repeated runs |
+| Window output: O(n·m) → O(n log n) via prefix sums + bisect | faster `window_results.tsv` generation |
+| Stop-codon warnings: per-codon → per-gene summary | reduced I/O noise |
+
+### pie thread scaling (cold)
 
 | Threads | Wall time (s) | Speedup | Efficiency |
 |--------:|-------------:|--------:|-----------:|
-| 1 | 15.8 | 1.00x | 100% |
-| 2 | 14.6 | 1.08x | 54% |
-| 4 | 14.3 | 1.11x | 28% |
-| 8 | 14.5 | 1.09x | 14% |
+| 1 | 4.7 | 1.00x | 100% |
+| 2 | 3.7 | 1.28x | 64% |
+| 4 | 3.7 | 1.25x | 31% |
+| 8 | 3.7 | 1.25x | 16% |
 
 Thread scaling is minimal on this dataset. The serial portion (VCF/GFF parsing, I/O) dominates at this scale (~400 genes). Larger genomes with tens of thousands of genes should benefit more from multi-threading.
 
@@ -99,7 +112,7 @@ Apisum_003668 shows a 3.5× piS discrepancy (pie=0.018, SNPGenie=0.063). The cau
 - `prepare_snpgenie_input.py` uses pie's annotation parser (`pie.annotation.parse_annotations`) to select the longest isoform per gene, ensuring both tools use the exact same gene models.
 - Both tools used `--minfreq 0.01`.
 - pie was run with `--keep-multiallelic` to include multi-allelic sites.
-- Performance numbers above were measured without `--keep-multiallelic`; the flag adds negligible overhead.
+- Performance numbers include `--keep-multiallelic`.
 
 ## Reproduce
 
