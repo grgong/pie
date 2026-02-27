@@ -225,7 +225,7 @@ class IndividualVariantReader:
     ``VariantReader`` so downstream code is unchanged.
     """
 
-    def __init__(self, vcf_path: str, samples: list[str],
+    def __init__(self, vcf_path: str, samples: list[str] | None = None,
                  min_freq: float = 0.01, min_qual: float = 20.0,
                  pass_only: bool = False, keep_multiallelic: bool = False,
                  min_call_rate: float = 0.8, min_an: int = 2):
