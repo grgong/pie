@@ -63,8 +63,11 @@ via `multiprocessing.Pool`.
 **Validation.**
 A regression test suite pins piN/piS values for 400 real
 *Acyrthosiphon pisum* genes, covering both strand orientations and
-multiallelic sites. On non-multiallelic sites the results match SNPGenie
-with r = 1.0.
+multiallelic sites. With unified inputs, synonymous/nonsynonymous site
+counts match SNPGenie exactly (r = 1.0) and piN/piS values agree within
+~1%, fully explained by the Nei (1987) sample-size correction that
+SNPGenie applies (π = n/(n−1)·(1−Σfᵢ²)) vs. the population parameter
+pie uses (π = 2p(1−p)). See [benchmark/](benchmark/) for details.
 
 ## Installation
 
@@ -357,9 +360,8 @@ pytest tests/ -m slow
 pytest tests/
 ```
 
-The regression tests pin piN/piS values for 400 genes validated against
-SNPGenie, covering site counting, multiallelic VCF handling, and both
-strand orientations.
+The regression tests pin piN/piS values for 400 genes, covering site
+counting, multiallelic VCF handling, and both strand orientations.
 
 ## Citation
 
