@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
+
 import numpy as np
 import pandas as pd
 
@@ -57,33 +59,47 @@ def write_window_results(
     for r in results:
         if not r.codon_results:
             continue
-        # Determine CDS span from codon genomic positions
-        positions = [cr.pos1 for cr in r.codon_results]
-        cds_min = min(positions)
-        cds_max = max(positions)
 
+        # Build sorted position array and prefix sums for O(log n) window queries
+        codons = sorted(r.codon_results, key=lambda cr: cr.pos1)
+        n = len(codons)
+        pos_arr = [cr.pos1 for cr in codons]
+        cds_min = pos_arr[0]
+        cds_max = pos_arr[-1]
+
+        # Prefix sums (length n+1, prefix[0] = 0)
+        pre_N_sites = [0.0] * (n + 1)
+        pre_S_sites = [0.0] * (n + 1)
+        pre_N_diffs = [0.0] * (n + 1)
+        pre_S_diffs = [0.0] * (n + 1)
+        for i, cr in enumerate(codons):
+            pre_N_sites[i + 1] = pre_N_sites[i] + cr.N_sites
+            pre_S_sites[i + 1] = pre_S_sites[i] + cr.S_sites
+            pre_N_diffs[i + 1] = pre_N_diffs[i] + cr.N_diffs
+            pre_S_diffs[i + 1] = pre_S_diffs[i] + cr.S_diffs
+
+        chrom = r.chrom
+        gene_id = r.gene_id
         win_start = cds_min
         while win_start <= cds_max:
             win_end = win_start + window_size
-            # Collect codons whose pos1 falls in [win_start, win_end)
-            window_codons = [
-                cr for cr in r.codon_results
-                if win_start <= cr.pos1 < win_end
-            ]
-            n_codons = len(window_codons)
-            N_sites = sum(cr.N_sites for cr in window_codons)
-            S_sites = sum(cr.S_sites for cr in window_codons)
-            N_diffs = sum(cr.N_diffs for cr in window_codons)
-            S_diffs = sum(cr.S_diffs for cr in window_codons)
+            # Bisect for codons with pos1 in [win_start, win_end)
+            lo = bisect_left(pos_arr, win_start)
+            hi = bisect_left(pos_arr, win_end)
+            n_codons = hi - lo
+            N_sites = pre_N_sites[hi] - pre_N_sites[lo]
+            S_sites = pre_S_sites[hi] - pre_S_sites[lo]
+            N_diffs = pre_N_diffs[hi] - pre_N_diffs[lo]
+            S_diffs = pre_S_diffs[hi] - pre_S_diffs[lo]
             piN = N_diffs / N_sites if N_sites > 0 else 0.0
             piS = S_diffs / S_sites if S_sites > 0 else 0.0
             piN_piS = piN / piS if piS > 0 else None
 
             rows.append({
-                "chrom": r.chrom,
+                "chrom": chrom,
                 "win_start": win_start,
                 "win_end": win_end,
-                "gene_id": r.gene_id,
+                "gene_id": gene_id,
                 "n_codons": n_codons,
                 "N_sites": N_sites,
                 "S_sites": S_sites,

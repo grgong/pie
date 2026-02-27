@@ -207,14 +207,9 @@ def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> di
         codon_probs.append((codon_str, prob, codon_idx))
 
     # Handle stop codons
+    stop_freq = 0.0
     if exclude_stops:
         stop_freq = sum(p for _, p, idx in codon_probs if is_stop_codon(idx))
-        if stop_freq > 0.01:
-            log.warning(
-                "Stop codon frequency %.4f > 1%% in polymorphic codon; "
-                "removing and renormalizing",
-                stop_freq,
-            )
 
         if stop_freq > 0:
             codon_probs = [(s, p, i) for s, p, i in codon_probs if not is_stop_codon(i)]
@@ -222,7 +217,8 @@ def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> di
             if total > 0:
                 codon_probs = [(s, p / total, i) for s, p, i in codon_probs]
             else:
-                return {"N_sites": 0.0, "S_sites": 0.0, "N_diffs": 0.0, "S_diffs": 0.0}
+                return {"N_sites": 0.0, "S_sites": 0.0, "N_diffs": 0.0, "S_diffs": 0.0,
+                        "_stop_freq": stop_freq}
 
     # Weighted site counts
     n_sites = 0.0
@@ -248,6 +244,7 @@ def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> di
         "S_sites": s_sites,
         "N_diffs": n_diffs,
         "S_diffs": s_diffs,
+        "_stop_freq": stop_freq,
     }
 
 
@@ -301,6 +298,7 @@ def compute_gene_diversity(
     total_S_diffs = 0.0
     n_codons_analyzed = 0
     n_poly = 0
+    n_stop_warn = 0  # count codons with stop freq > 1%
     codon_results: list[CodonResult] = []
 
     for i, codon_str in enumerate(codons):
@@ -317,6 +315,8 @@ def compute_gene_diversity(
             # Full diversity computation for polymorphic codons
             n_poly += 1
             result = compute_codon_diversity(freq_array[i], exclude_stops=exclude_stops)
+            if exclude_stops and result.get("_stop_freq", 0.0) > 0.01:
+                n_stop_warn += 1
             cr = CodonResult(
                 chrom=chrom,
                 pos1=pos1,
@@ -347,6 +347,13 @@ def compute_gene_diversity(
         total_S_sites += cr.S_sites
         total_N_diffs += cr.N_diffs
         total_S_diffs += cr.S_diffs
+
+    if n_stop_warn > 0:
+        log.warning(
+            "Gene %s: %d polymorphic codon(s) had stop-codon frequency > 1%%; "
+            "stops removed and renormalized",
+            gene.gene_id, n_stop_warn,
+        )
 
     # Mean depth across variant sites only (0 when no variants)
     if all_variants:
