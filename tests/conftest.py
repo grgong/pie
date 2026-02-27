@@ -130,6 +130,97 @@ chr1\t195\t.\tA\tT\t45\t.\t.\tGT\t0/1\t0/0\t0/1\t0/1
     return _bgzip_and_index(vcf_path)
 
 
+# --- Robustness fixtures (PR#9: Issues #2, #4, #7) ---
+
+@pytest.fixture
+def ref_with_n_fasta(tmp_path):
+    """Reference FASTA with N bases in coding regions (Issue #2).
+
+    Same layout as ref.fa but with N bases injected into gene1 codons:
+      codon 1: ATG (start) - kept clean
+      codon 2: NCT        - N at position 4 (0-based 3)
+      codon 3: GAT        - clean
+      codons 4-30: GCT*27 - clean
+    Gene1 occupies pos 1-90 (1-based), gene2/gene3 same as standard.
+    """
+    # Start with the standard ref.fa sequence, inject N at position 3 (0-based)
+    seq = list(
+        "ATGGCTGATGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTG"
+        "CTGCTGCTGCTGCTGCTTAAAAAAAAAAAAATGGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTG"
+        "CTGCTGCTGCTGCTGCTACTTTTTTTTTTTTTTTTTTTTTTGCTGCTGCTGCTGATGCTGCTGCTGCTGC"
+        "TGCTGCTTAAAAAAAAAAAATTAAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAG"
+        "CAGCAGCAGCAGCAGCATCAGCAGCAGCCATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    )
+    seq[3] = "N"  # codon 2 becomes NCT
+    fa_path = tmp_path / "ref_with_n.fa"
+    fa_path.write_text(">chr1\n" + "".join(seq) + "\n")
+    subprocess.run(["samtools", "faidx", str(fa_path)], check=True)
+    return str(fa_path)
+
+
+@pytest.fixture
+def ref_all_n_fasta(tmp_path):
+    """Reference FASTA where gene1 region is entirely N (edge case for Issue #2).
+
+    Gene1 (pos 1-90) is all N's, rest is normal.
+    """
+    seq = list(
+        "ATGGCTGATGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTG"
+        "CTGCTGCTGCTGCTGCTTAAAAAAAAAAAAATGGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTG"
+        "CTGCTGCTGCTGCTGCTACTTTTTTTTTTTTTTTTTTTTTTGCTGCTGCTGCTGATGCTGCTGCTGCTGC"
+        "TGCTGCTTAAAAAAAAAAAATTAAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAGCAG"
+        "CAGCAGCAGCAGCAGCATCAGCAGCAGCCATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    )
+    for i in range(90):
+        seq[i] = "N"
+    fa_path = tmp_path / "ref_all_n.fa"
+    fa_path.write_text(">chr1\n" + "".join(seq) + "\n")
+    subprocess.run(["samtools", "faidx", str(fa_path)], check=True)
+    return str(fa_path)
+
+
+@pytest.fixture
+def cdsonly_gff(tmp_path):
+    """GFF3 with only CDS/exon features, no gene parent (Issue #4).
+
+    parse_annotations requires 'gene' features; this GFF should yield 0 genes.
+    """
+    content = """\
+##gff-version 3
+##sequence-region chr1 1 350
+chr1\ttest\texon\t1\t90\t.\t+\t.\tID=exon1
+chr1\ttest\tCDS\t1\t90\t.\t+\t0\tID=cds1
+chr1\ttest\texon\t101\t220\t.\t+\t.\tID=exon2
+chr1\ttest\tCDS\t101\t220\t.\t+\t0\tID=cds2
+"""
+    gff_path = tmp_path / "cdsonly.gff3"
+    gff_path.write_text(content)
+    return str(gff_path)
+
+
+@pytest.fixture
+def mismatch_vcf_file(tmp_path):
+    """VCF with bare contig names ('1') instead of 'chr1' (Issue #7).
+
+    Same variants as standard test data but contig renamed from chr1 -> 1.
+    """
+    vcf_content = """\
+##fileformat=VCFv4.2
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+##contig=<ID=1,length=350>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE
+1\t6\t.\tT\tC\t30\t.\t.\tGT:DP:AD\t0/1:100:80,20
+1\t7\t.\tG\tA\t50\t.\t.\tGT:DP:AD\t0/1:100:70,30
+1\t195\t.\tA\tT\t45\t.\t.\tGT:DP:AD\t0/1:100:60,40
+1\t297\t.\tA\tG\t15\t.\t.\tGT:DP:AD\t0/1:100:50,50
+"""
+    vcf_path = tmp_path / "mismatch.vcf"
+    vcf_path.write_text(vcf_content)
+    return _bgzip_and_index(vcf_path)
+
+
 @pytest.fixture
 def real_ref_fasta():
     path = REAL_DATA_DIR / "Acyrthosiphon_pisum.fa"

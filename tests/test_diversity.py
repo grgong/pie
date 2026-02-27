@@ -56,6 +56,25 @@ class TestBuildAlleleFreqArray:
         assert abs(freqs[0, 2, 2] - 0.1) < 1e-10   # G
         assert abs(freqs[0, 2, 1] - 0.05) < 1e-10   # C
 
+    def test_ambiguous_base_n_defensive_guard(self):
+        """Non-ACGT base (N) in codon: break leaves remaining positions zeroed (Issue #2).
+
+        Upstream (compute_gene_diversity) filters codons with N before calling
+        this function. The defensive guard here breaks on N, leaving the N
+        position and any subsequent positions as zeros.
+        """
+        codons = ["ATN", "AAA"]
+        positions = [("chr1", 0, 1, 2), ("chr1", 3, 4, 5)]
+        freqs = build_allele_freq_array(codons, positions, [])
+        # First codon: A and T are set, N triggers break -> pos 2 all zeros
+        assert freqs[0, 0, 0] == 1.0  # A set before break
+        assert freqs[0, 1, 3] == 1.0  # T set before break
+        assert np.all(freqs[0, 2] == 0.0)  # N position zeroed
+        # Second codon is clean
+        assert freqs[1, 0, 0] == 1.0  # A
+        assert freqs[1, 1, 0] == 1.0  # A
+        assert freqs[1, 2, 0] == 1.0  # A
+
     def test_minus_strand_complement(self):
         """On - strand, variant REF/ALT must be complemented."""
         # CDS-sense codon is "ATG", genomic positions are reversed
@@ -287,3 +306,49 @@ class TestComputeGeneDiversity:
             assert cr.N_sites >= 0
             assert cr.S_sites >= 0
             assert isinstance(cr, CodonResult)
+
+
+class TestAmbiguousBaseHandling:
+    """Tests for Issue #2: N bases in reference genome."""
+
+    def test_partial_n_skips_affected_codons(self, ref_with_n_fasta, gff3_file, vcf_file):
+        """Gene with one N-containing codon: skipped, rest processed normally."""
+        from pie.reference import ReferenceGenome
+        from pie.annotation import parse_annotations
+        from pie.vcf import VariantReader
+
+        genes = parse_annotations(gff3_file)
+        gene1 = [g for g in genes if "gene1" in g.gene_id.lower()][0]
+
+        with ReferenceGenome(ref_with_n_fasta) as ref, \
+             VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as vcf:
+            result = compute_gene_diversity(gene1, ref, vcf)
+
+        assert isinstance(result, GeneResult)
+        # Original: 30 codons, 29 excl stop. Now 1 codon has N -> 28 coding codons
+        assert result.n_codons == 28
+        # Should still have variants (pos 6 and 7 are in codon 2 and 3)
+        # Codon 2 (NCT) is skipped, codon 3 (GAT) at pos 7 still has variant
+        assert result.n_variants >= 1
+
+    def test_all_n_returns_empty_result(self, ref_all_n_fasta, gff3_file, vcf_file):
+        """Gene with all-N reference: returns zero-codon GeneResult, no crash."""
+        from pie.reference import ReferenceGenome
+        from pie.annotation import parse_annotations
+        from pie.vcf import VariantReader
+
+        genes = parse_annotations(gff3_file)
+        gene1 = [g for g in genes if "gene1" in g.gene_id.lower()][0]
+
+        with ReferenceGenome(ref_all_n_fasta) as ref, \
+             VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as vcf:
+            result = compute_gene_diversity(gene1, ref, vcf)
+
+        assert isinstance(result, GeneResult)
+        assert result.n_codons == 0
+        assert result.N_sites == 0.0
+        assert result.S_sites == 0.0
+        assert result.N_diffs == 0.0
+        assert result.S_diffs == 0.0
+        assert result.piN == 0.0
+        assert result.piS == 0.0

@@ -1,6 +1,6 @@
 import os
 import shutil
-from pie.vcf import ensure_indexed, VariantReader, IndividualVariantReader
+from pie.vcf import ensure_indexed, get_vcf_contigs, VariantReader, IndividualVariantReader
 
 
 class TestEnsureIndexed:
@@ -14,6 +14,38 @@ class TestEnsureIndexed:
         result = ensure_indexed(tmp_vcf)
         assert result.endswith(".vcf.gz")
         assert os.path.exists(result + ".tbi")
+
+
+class TestGetVcfContigs:
+    def test_returns_frozenset(self, vcf_file):
+        contigs = get_vcf_contigs(vcf_file)
+        assert isinstance(contigs, frozenset)
+        assert "chr1" in contigs
+
+    def test_mismatch_vcf_contigs(self, mismatch_vcf_file):
+        contigs = get_vcf_contigs(mismatch_vcf_file)
+        assert "1" in contigs
+        assert "chr1" not in contigs
+
+
+class TestMissingContigTracking:
+    def test_fetch_missing_contig_returns_empty(self, vcf_file):
+        """Fetching from absent contig returns [] and tracks it (Issue #7)."""
+        with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as reader:
+            variants = reader.fetch("nonexistent", 0, 100)
+            assert variants == []
+            assert "nonexistent" in reader._missing_contigs
+
+    def test_individual_reader_missing_contig(self, individual_vcf_file):
+        """IndividualVariantReader also tracks missing contigs."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chrX", 0, 100)
+            assert variants == []
+            assert "chrX" in reader._missing_contigs
 
 
 class TestVariantReader:

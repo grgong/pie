@@ -288,3 +288,70 @@ class TestIndividualMode:
         assert (out / "gene_results.tsv").exists()
         assert (out / "window_results.tsv").exists()
         assert (out / "summary.tsv").exists()
+
+
+class TestRobustness:
+    """Integration tests for PR#9 robustness fixes (Issues #2, #4, #7)."""
+
+    def test_ambiguous_bases_complete(self, runner, ref_with_n_fasta, gff3_file,
+                                      vcf_file, tmp_path):
+        """Issue #2: N bases in reference genome should not crash (KeyError).
+
+        Gene1 codon 2 has N -> skipped, pipeline continues with 28 codons.
+        """
+        result = runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file,
+            "--fasta", ref_with_n_fasta, "--outdir", str(tmp_path),
+            "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        assert result.exit_code == 0, result.output
+        df = pd.read_csv(tmp_path / "gene_results.tsv", sep="\t")
+        assert len(df) == 3
+        g1 = df[df["gene_id"].str.contains("gene1", case=False)].iloc[0]
+        assert g1["n_codons"] == 28  # 29 - 1 skipped N codon
+
+    def test_all_n_gene_completes(self, runner, ref_all_n_fasta, gff3_file,
+                                   vcf_file, tmp_path):
+        """Issue #2 edge case: gene with all-N ref completes with 0 codons."""
+        result = runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file,
+            "--fasta", ref_all_n_fasta, "--outdir", str(tmp_path),
+            "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        assert result.exit_code == 0, result.output
+        df = pd.read_csv(tmp_path / "gene_results.tsv", sep="\t")
+        g1 = df[df["gene_id"].str.contains("gene1", case=False)].iloc[0]
+        assert g1["n_codons"] == 0
+
+    def test_cdsonly_gff_exit_code_1(self, runner, ref_fasta, cdsonly_gff,
+                                      vcf_file, tmp_path):
+        """Issue #4: CDS-only GFF (no gene features) -> exit code 1."""
+        result = runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", cdsonly_gff,
+            "--fasta", ref_fasta, "--outdir", str(tmp_path),
+        ])
+        assert result.exit_code == 1
+        assert "No genes with CDS features found" in result.output
+
+    def test_contig_mismatch_exit_code_1(self, runner, ref_fasta, gff3_file,
+                                          mismatch_vcf_file, tmp_path):
+        """Issue #7: chr1 (GFF) vs 1 (VCF) -> exit code 1 with helpful message."""
+        result = runner.invoke(main, [
+            "run", "--vcf", mismatch_vcf_file, "--gff", gff3_file,
+            "--fasta", ref_fasta, "--outdir", str(tmp_path),
+        ])
+        assert result.exit_code == 1
+        assert "No contig names shared" in result.output
+
+    def test_summary_uses_cds_snp_variants(self, runner, ref_fasta, gff3_file,
+                                            vcf_file, tmp_path):
+        """Issue #6: summary column renamed from total_variants to cds_snp_variants."""
+        result = runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file,
+            "--fasta", ref_fasta, "--outdir", str(tmp_path),
+            "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        assert result.exit_code == 0, result.output
+        df = pd.read_csv(tmp_path / "summary.tsv", sep="\t")
+        assert "cds_snp_variants" in df.columns
+        assert "total_variants" not in df.columns
