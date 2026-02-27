@@ -112,6 +112,7 @@ for t in "${THREADS[@]}"; do
                 --outdir "$outdir" \
                 --threads "$t" \
                 --min-freq 0.01 \
+                --keep-multiallelic \
             > /dev/null 2>&1
 
         read -r real user sys < "$timefile"

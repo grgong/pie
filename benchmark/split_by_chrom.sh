@@ -9,8 +9,15 @@ SNPGENIE_DIR="$BENCH_DIR/snpgenie_input"
 mkdir -p "$SNPGENIE_DIR"
 
 FASTA="$DATA_DIR/Acyrthosiphon_pisum.fa"
-VCF="$BENCH_DIR/SRR27175631.filtered.snps.vcf"
+VCF_GZ="$DATA_DIR/SRR27175631.filtered.snps.vcf.gz"
 GTF="$BENCH_DIR/Acyrthosiphon_pisum.gtf"
+
+# Decompress VCF if needed (SNPGenie requires plain text)
+VCF="$BENCH_DIR/SRR27175631.filtered.snps.vcf"
+if [[ ! -f "$VCF" ]]; then
+    echo "Decompressing VCF..."
+    zcat "$VCF_GZ" > "$VCF"
+fi
 
 # Get chromosome names from FAI
 chroms=($(cut -f1 "$DATA_DIR/Acyrthosiphon_pisum.fa.fai"))
