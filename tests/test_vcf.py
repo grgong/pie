@@ -200,3 +200,84 @@ class TestIndividualVariantReader:
         ) as reader:
             assert reader is not None
             assert reader.n_samples == 4
+
+    def test_min_call_rate_filter(self, individual_vcf_file):
+        """min_call_rate=0.8 filters pos 6 (0.75) and pos 297 (0.50)."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.8, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            positions = [v.pos for v in variants]
+            assert 5 not in positions   # pos 6: call_rate=0.75 < 0.8
+            assert 6 in positions       # pos 7: call_rate=1.0
+            assert 194 in positions     # pos 195: call_rate=1.0
+            assert 296 not in positions  # pos 297: call_rate=0.50 < 0.8
+            assert len(variants) == 2
+
+    def test_min_an_filter(self, individual_vcf_file):
+        """min_an=6 filters pos 297 (AN=4) but keeps pos 6 (AN=6)."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=6,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            positions = [v.pos for v in variants]
+            assert 5 in positions       # AN=6 >= 6
+            assert 6 in positions       # AN=8 >= 6
+            assert 194 in positions     # AN=8 >= 6
+            assert 296 not in positions  # AN=4 < 6
+
+    def test_min_freq_on_gt_derived_af(self, individual_vcf_file):
+        """min_freq=0.30 filters pos 7 (freq=0.25) and pos 297 (freq=0.25)."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.30, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            positions = [v.pos for v in variants]
+            assert 5 in positions       # freq=2/6=0.333 >= 0.30
+            assert 6 not in positions   # freq=2/8=0.25 < 0.30
+            assert 194 in positions     # freq=5/8=0.625 >= 0.30
+            assert 296 not in positions  # freq=1/4=0.25 < 0.30
+
+    def test_qual_filter(self, individual_vcf_file):
+        """min_qual=20 filters pos 297 (QUAL=15)."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=20.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            positions = [v.pos for v in variants]
+            assert 296 not in positions  # QUAL=15 < 20
+
+    def test_sample_subset(self, individual_vcf_file):
+        """Selecting only S1,S2: pos 6 T>C has AC=1/AN=4, call_rate=1.0."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            assert reader.n_samples == 2
+            variants = reader.fetch("chr1", 0, 100)
+            v6 = next(v for v in variants if v.pos == 5)
+            # S1: 0/1 (AC=1), S2: 0/0 (AC=0) -> AC=1, AN=4
+            assert abs(v6.freq - 1 / 4) < 1e-6
+            assert v6.depth == 4
+            assert abs(v6.call_rate - 1.0) < 1e-6  # both called
+
+    def test_all_missing_site_skipped(self, individual_vcf_file):
+        """If all selected samples are missing, the site is skipped."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 10)
+            # pos 6: S4 is ./., so 0 called -> skipped
+            positions = [v.pos for v in variants]
+            assert 5 not in positions
