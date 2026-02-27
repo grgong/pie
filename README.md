@@ -69,6 +69,9 @@ with r = 1.0.
 ## Installation
 
 ```bash
+git clone https://github.com/grgong/pie.git
+cd pie
+
 # Create conda environment
 mamba env create -f environment.yml
 
