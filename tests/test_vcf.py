@@ -1,6 +1,6 @@
 import os
 import shutil
-from pie.vcf import ensure_indexed, VariantReader
+from pie.vcf import ensure_indexed, VariantReader, IndividualVariantReader
 
 
 class TestEnsureIndexed:
@@ -157,3 +157,46 @@ class TestMultiallelicFiltering:
             assert 5 in positions
             assert 194 in positions
             assert 6 not in positions
+
+
+class TestIndividualVariantReader:
+    def test_basic_gt_frequency(self, individual_vcf_file):
+        """All 4 samples, no filtering. Verify GT-derived frequencies."""
+        with IndividualVariantReader(
+            individual_vcf_file,
+            samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            # 4 biallelic sites, all pass with no filters
+            assert len(variants) == 4
+
+            v6 = next(v for v in variants if v.pos == 5)
+            assert v6.ref == "T" and v6.alt == "C"
+            assert abs(v6.freq - 2 / 6) < 1e-6   # AC=2, AN=6
+            assert v6.depth == 6                    # AN
+            assert abs(v6.call_rate - 0.75) < 1e-6  # 3/4
+
+            v7 = next(v for v in variants if v.pos == 6)
+            assert abs(v7.freq - 2 / 8) < 1e-6
+            assert v7.depth == 8
+            assert abs(v7.call_rate - 1.0) < 1e-6
+
+            v195 = next(v for v in variants if v.pos == 194)
+            assert abs(v195.freq - 5 / 8) < 1e-6  # 3 hets(AC=3) + 1 hom_alt(AC=2) = 5 alt alleles
+            assert v195.depth == 8
+
+            v297 = next(v for v in variants if v.pos == 296)
+            assert abs(v297.freq - 1 / 4) < 1e-6
+            assert v297.depth == 4
+            assert abs(v297.call_rate - 0.50) < 1e-6
+
+    def test_context_manager(self, individual_vcf_file):
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            assert reader is not None
+            assert reader.n_samples == 4

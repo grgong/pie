@@ -90,7 +90,7 @@ def individual_vcf_file(tmp_path):
     4 diploid samples (S1-S4), same positions as test data:
       pos 6   T>C  S1:0/1  S2:0/0  S3:0/1  S4:./.  -> called=3, AN=6, AC=2, freq=1/3, call_rate=0.75
       pos 7   G>A  S1:0/0  S2:0/1  S3:0/1  S4:0/0  -> called=4, AN=8, AC=2, freq=1/4, call_rate=1.00
-      pos 195 A>T  S1:0/1  S2:0/1  S3:1/1  S4:0/1  -> called=4, AN=8, AC=6, freq=3/4, call_rate=1.00
+      pos 195 A>T  S1:0/1  S2:0/1  S3:1/1  S4:0/1  -> called=4, AN=8, AC=5, freq=5/8, call_rate=1.00
       pos 297 A>G  S1:0/1  S2:./.  S3:./.  S4:0/0  -> called=2, AN=4, AC=1, freq=1/4, call_rate=0.50
     """
     vcf_content = """\
