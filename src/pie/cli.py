@@ -106,6 +106,7 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
             min_call_rate = 0.8
         if min_an is None:
             min_an = 2
+        min_depth = 0  # unused in individual mode but required by run_parallel
 
     # --- Validate inputs exist ---
     for path, name in [(vcf, "VCF"), (gff, "GFF"), (fasta, "FASTA")]:
@@ -145,6 +146,10 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
         else:
             selected_samples = list(vcf_samples)  # use all VCF samples
             log.info("Using all %d samples from VCF", len(selected_samples))
+
+        if not selected_samples:
+            click.echo("Error: no samples specified or resolved.", err=True)
+            sys.exit(1)
 
         # Validate sample names exist in VCF
         if samples is not None or samples_file is not None:

@@ -1,7 +1,7 @@
 """Core piN/piS diversity engine using the Nei-Gojobori method.
 
 Computes per-gene nonsynonymous (piN) and synonymous (piS) nucleotide
-diversity from pooled sequencing data.
+diversity from pool-seq or individual-sequencing data.
 """
 
 import logging
@@ -20,11 +20,19 @@ from pie.codon import (
     S_SITES_EXCL_STOP,
     is_stop_codon,
 )
+from typing import Protocol
+
 from pie.annotation import GeneModel
 from pie.reference import ReferenceGenome
-from pie.vcf import VariantReader, Variant
+from pie.vcf import Variant
 
 log = logging.getLogger(__name__)
+
+
+class VariantReaderLike(Protocol):
+    """Protocol for variant readers (VariantReader or IndividualVariantReader)."""
+
+    def fetch(self, chrom: str, start: int, end: int) -> list[Variant]: ...
 
 # Base encoding: A=0, C=1, G=2, T=3
 _BASE_TO_IDX = {"A": 0, "C": 1, "G": 2, "T": 3}
@@ -249,7 +257,7 @@ def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> di
 def compute_gene_diversity(
     gene: GeneModel,
     ref: ReferenceGenome,
-    vcf: VariantReader,
+    vcf: VariantReaderLike,
     exclude_stops: bool = False,
 ) -> GeneResult:
     """Compute per-gene piN/piS diversity.
