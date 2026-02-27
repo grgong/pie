@@ -281,3 +281,55 @@ class TestIndividualVariantReader:
             # pos 6: S4 is ./., so 0 called -> skipped
             positions = [v.pos for v in variants]
             assert 5 not in positions
+
+
+class TestIndividualMultiallelic:
+    def test_default_skips_multiallelic(self, individual_multiallelic_vcf_file):
+        """pos 7 has ALT=A,C -> multiallelic, skipped by default."""
+        with IndividualVariantReader(
+            individual_multiallelic_vcf_file,
+            samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            positions = [v.pos for v in variants]
+            assert 6 not in positions  # multiallelic skipped
+            assert 5 in positions
+            assert 194 in positions
+            assert len(variants) == 2
+
+    def test_keep_multiallelic(self, individual_multiallelic_vcf_file):
+        """With keep_multiallelic=True, both ALTs at pos 7 are kept.
+
+        pos 7 G>A,C: S1:0/1 S2:0/2 S3:1/2 S4:1/2
+        AN=8, AC_A=3, AC_C=3, freq_A=3/8=0.375, freq_C=3/8=0.375
+        """
+        with IndividualVariantReader(
+            individual_multiallelic_vcf_file,
+            samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=True, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            ma = [v for v in variants if v.pos == 6]
+            assert len(ma) == 2
+            va = next(v for v in ma if v.alt == "A")
+            vc = next(v for v in ma if v.alt == "C")
+            assert abs(va.freq - 3 / 8) < 1e-6
+            assert abs(vc.freq - 3 / 8) < 1e-6
+            assert va.depth == 8  # AN
+            assert vc.depth == 8
+
+    def test_multiallelic_min_freq_filter(self, individual_multiallelic_vcf_file):
+        """min_freq filters individual ALTs at multiallelic site."""
+        with IndividualVariantReader(
+            individual_multiallelic_vcf_file,
+            samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.40, min_qual=0.0, pass_only=False,
+            keep_multiallelic=True, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            # Both ALTs at pos 7 have freq=0.375 < 0.40
+            ma = [v for v in variants if v.pos == 6]
+            assert len(ma) == 0

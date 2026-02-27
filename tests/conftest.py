@@ -113,7 +113,7 @@ def individual_multiallelic_vcf_file(tmp_path):
     """Multi-sample VCF with a multiallelic site for individual-mode testing.
 
       pos 6   T>C    S1:0/1  S2:0/0  S3:0/1  S4:0/0  -> AN=8, AC=2, freq=1/4
-      pos 7   G>A,C  S1:0/1  S2:0/2  S3:0/1  S4:1/2  -> AN=8, AC_A=3, AC_C=3, freq_A=3/8, freq_C=3/8
+      pos 7   G>A,C  S1:0/1  S2:0/2  S3:1/2  S4:1/2  -> AN=8, AC_A=3, AC_C=3, freq_A=3/8, freq_C=3/8
       pos 195 A>T    S1:0/1  S2:0/0  S3:0/1  S4:0/1  -> AN=8, AC=3, freq=3/8
     """
     vcf_content = """\
@@ -122,7 +122,7 @@ def individual_multiallelic_vcf_file(tmp_path):
 ##contig=<ID=chr1,length=350>
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4
 chr1\t6\t.\tT\tC\t30\t.\t.\tGT\t0/1\t0/0\t0/1\t0/0
-chr1\t7\t.\tG\tA,C\t50\t.\t.\tGT\t0/1\t0/2\t0/1\t1/2
+chr1\t7\t.\tG\tA,C\t50\t.\t.\tGT\t0/1\t0/2\t1/2\t1/2
 chr1\t195\t.\tA\tT\t45\t.\t.\tGT\t0/1\t0/0\t0/1\t0/1
 """
     vcf_path = tmp_path / "individual_multiallelic.vcf"
