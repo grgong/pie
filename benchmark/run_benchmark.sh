@@ -95,12 +95,15 @@ done
 echo ""
 
 # --------------------------------------------------------------------------
-# pie benchmark (varying threads)
+# pie benchmark — cold (no annotation cache; DB rebuilt each run)
 # --------------------------------------------------------------------------
+GFF_CACHE="$GFF.pie.db"
+
 for t in "${THREADS[@]}"; do
-    echo "--- pie (threads=$t) ---"
+    echo "--- pie cold (threads=$t) ---"
     for rep in $(seq 1 "$REPS"); do
-        outdir="$BENCH_DIR/pie_t${t}_rep${rep}"
+        rm -f "$GFF_CACHE"
+        outdir="$BENCH_DIR/pie_cold_t${t}_rep${rep}"
         rm -rf "$outdir"
 
         timefile=$(mktemp)
@@ -118,8 +121,47 @@ for t in "${THREADS[@]}"; do
         read -r real user sys < "$timefile"
         rm -f "$timefile"
 
-        echo -e "pie\t${t}\t${rep}\t${real}\t${user}\t${sys}" >> "$RESULTS"
-        printf "  %-12s rep=%d  %.1fs (user: %.1fs)\n" "pie -t $t" "$rep" "$real" "$user"
+        echo -e "pie_cold\t${t}\t${rep}\t${real}\t${user}\t${sys}" >> "$RESULTS"
+        printf "  %-12s rep=%d  %.1fs (user: %.1fs)\n" "pie_cold -t $t" "$rep" "$real" "$user"
+    done
+    echo ""
+done
+
+# --------------------------------------------------------------------------
+# pie benchmark — warm (annotation cache reused from previous cold run)
+# --------------------------------------------------------------------------
+# Ensure cache exists (one warmup run if needed)
+if [[ ! -f "$GFF_CACHE" ]]; then
+    echo "--- Building annotation cache (warmup) ---"
+    warmup_dir=$(mktemp -d)
+    pie run --vcf "$VCF" --gff "$GFF" --fasta "$FASTA" --outdir "$warmup_dir" \
+        --threads 1 --min-freq 0.01 --keep-multiallelic > /dev/null 2>&1
+    rm -rf "$warmup_dir"
+fi
+
+for t in "${THREADS[@]}"; do
+    echo "--- pie warm (threads=$t) ---"
+    for rep in $(seq 1 "$REPS"); do
+        outdir="$BENCH_DIR/pie_warm_t${t}_rep${rep}"
+        rm -rf "$outdir"
+
+        timefile=$(mktemp)
+        /usr/bin/time -f "%e\t%U\t%S" -o "$timefile" \
+            pie run \
+                --vcf "$VCF" \
+                --gff "$GFF" \
+                --fasta "$FASTA" \
+                --outdir "$outdir" \
+                --threads "$t" \
+                --min-freq 0.01 \
+                --keep-multiallelic \
+            > /dev/null 2>&1
+
+        read -r real user sys < "$timefile"
+        rm -f "$timefile"
+
+        echo -e "pie_warm\t${t}\t${rep}\t${real}\t${user}\t${sys}" >> "$RESULTS"
+        printf "  %-12s rep=%d  %.1fs (user: %.1fs)\n" "pie_warm -t $t" "$rep" "$real" "$user"
     done
     echo ""
 done
@@ -150,14 +192,17 @@ def sd(xs):
     m = mean(xs)
     return math.sqrt(sum((x - m) ** 2 for x in xs) / max(len(xs) - 1, 1)) if len(xs) > 1 else 0.0
 
+# Sort order: SNPGenie first, then pie_cold, then pie_warm
+tool_order = {"SNPGenie": 0, "pie_cold": 1, "pie_warm": 2}
+
 # Print table
 print(f"{'Tool':<12} {'Threads':>7} {'Real (s)':>14} {'User (s)':>14} {'Speedup':>8}")
-print("-" * 60)
+print("-" * 65)
 
 snpgenie_mean = None
-pie_1t_mean = None
+pie_cold_1t_mean = None
 
-for key in sorted(results.keys(), key=lambda k: (0 if k[0] == "SNPGenie" else 1, k[1])):
+for key in sorted(results.keys(), key=lambda k: (tool_order.get(k[0], 9), k[1])):
     tool, threads = key
     reals = [r[0] for r in results[key]]
     users = [r[1] for r in results[key]]
@@ -168,23 +213,22 @@ for key in sorted(results.keys(), key=lambda k: (0 if k[0] == "SNPGenie" else 1,
         snpgenie_mean = m_real
         speedup_str = "ref"
     else:
-        if pie_1t_mean is None:
-            pie_1t_mean = m_real
+        if tool == "pie_cold" and pie_cold_1t_mean is None:
+            pie_cold_1t_mean = m_real
         speedup_vs_snpgenie = snpgenie_mean / m_real if m_real > 0 else float("inf")
         speedup_str = f"{speedup_vs_snpgenie:.1f}x"
 
     print(f"{tool:<12} {threads:>7} {m_real:>7.1f} ± {s_real:<4.1f} {m_user:>7.1f} ± {s_user:<4.1f} {speedup_str:>8}")
 
-# pie scaling efficiency
-if pie_1t_mean and len([k for k in results if k[0] == "pie"]) > 1:
+# pie_cold thread scaling
+pie_cold_keys = sorted([k for k in results if k[0] == "pie_cold"], key=lambda k: k[1])
+if pie_cold_1t_mean and len(pie_cold_keys) > 1:
     print()
-    print("pie thread scaling (vs pie -t 1):")
-    for key in sorted(results.keys(), key=lambda k: k[1]):
-        tool, threads = key
-        if tool != "pie":
-            continue
+    print("pie_cold thread scaling (vs pie_cold -t 1):")
+    for key in pie_cold_keys:
+        _, threads = key
         m_real = mean([r[0] for r in results[key]])
-        scaling = pie_1t_mean / m_real if m_real > 0 else 0
+        scaling = pie_cold_1t_mean / m_real if m_real > 0 else 0
         efficiency = scaling / threads * 100
         print(f"  -t {threads}: {m_real:.1f}s  speedup={scaling:.2f}x  efficiency={efficiency:.0f}%")
 
