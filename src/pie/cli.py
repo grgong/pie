@@ -9,11 +9,28 @@ from pie import __version__
 
 log = logging.getLogger("pie")
 
+_HELP_OPTS = {"help_option_names": ["-h", "--help"]}
 
-@click.group()
-@click.version_option(version=__version__)
+
+@click.group(context_settings=_HELP_OPTS)
+@click.version_option(__version__, "-V", "--version")
 def main():
-    """pie — piN/piS Estimator for pool-seq and individual-sequencing data."""
+    """pie — piN/piS Estimator for pool-seq and individual-sequencing data.
+
+    \b
+    Compute per-gene and sliding-window piN/piS ratios from a VCF, a genome
+    annotation (GFF3/GTF), and a reference FASTA.  Supports both pool-seq
+    (allele-frequency based) and individual-sequencing (genotype based) data.
+
+    \b
+    Quick start:
+      pie run -v variants.vcf.gz -g genes.gff3 -f ref.fa -o results/
+      pie plot -i results/gene_results.tsv -o manhattan.png
+      pie summary results/summary.tsv
+
+    \b
+    Use 'pie <command> -h' for command-specific help.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -21,31 +38,82 @@ def main():
     )
 
 
-@main.command()
-@click.option("--vcf", required=True, help="Input VCF file (bgzipped or plain)")
-@click.option("--gff", required=True, help="GFF3 or GTF annotation file")
-@click.option("--fasta", required=True, help="Reference FASTA file (indexed)")
-@click.option("--outdir", required=True, help="Output directory")
-@click.option("--mode", default="pool", show_default=True, help="Analysis mode: 'pool' (pool-seq) or 'individual'/'ind' (individual genotypes)")
-@click.option("--min-freq", default=0.01, show_default=True, help="Minimum allele frequency")
-@click.option("--min-depth", default=None, type=int, help="Minimum read depth [pool mode only, default: 10]")
-@click.option("--min-qual", default=20.0, show_default=True, help="Minimum variant quality")
-@click.option("--pass-only", is_flag=True, help="Only use PASS-filtered variants")
-@click.option("--keep-multiallelic", is_flag=True, help="Keep and merge multiallelic sites instead of skipping them")
-@click.option("--include-stop-codons", is_flag=True, help="Count stop_gained mutations as nonsynonymous (by default they are excluded, matching NG86/SNPGenie conventions)")
-@click.option("--window-size", default=1000, show_default=True, help="Sliding window size (bp)")
-@click.option("--window-step", default=100, show_default=True, type=click.IntRange(min=1), help="Sliding window step (bp)")
-@click.option("--threads", default=1, show_default=True, help="Number of threads")
-@click.option("--sample", default=None, help="Sample name to analyse [pool mode only, for multi-sample VCFs]")
-@click.option("--samples", default=None, help="Comma-separated sample names [individual mode only]")
-@click.option("--samples-file", default=None, type=click.Path(exists=True), help="File with one sample name per line [individual mode only]")
-@click.option("--min-call-rate", default=None, type=float, help="Minimum genotype call rate [individual mode only, default: 0.8]")
-@click.option("--min-an", default=None, type=int, help="Minimum allele number (AN) [individual mode only, default: 2]")
+@main.command(no_args_is_help=True, context_settings=_HELP_OPTS)
+@click.option("-v", "--vcf", required=True, help="Input VCF file (bgzipped or plain).")
+@click.option("-g", "--gff", required=True, help="GFF3 or GTF annotation file.")
+@click.option("-f", "--fasta", required=True, help="Reference FASTA file (must be indexed with .fai).")
+@click.option("-o", "--outdir", required=True, help="Output directory (created if absent).")
+@click.option("-m", "--mode", default="pool", show_default=True,
+              help="Analysis mode: 'pool' (pool-seq) or 'individual'/'ind'.")
+@click.option("--min-freq", default=0.01, show_default=True, help="Minimum allele frequency.")
+@click.option("-d", "--min-depth", default=None, type=int,
+              help="Minimum read depth.  [pool mode only, default: 10]")
+@click.option("-q", "--min-qual", default=20.0, show_default=True, help="Minimum variant quality (QUAL).")
+@click.option("--pass-only", is_flag=True, help="Only use PASS-filtered variants.")
+@click.option("--keep-multiallelic", is_flag=True,
+              help="Keep and merge multiallelic sites instead of skipping them.")
+@click.option("--include-stop-codons", is_flag=True,
+              help="Count stop_gained as nonsynonymous (excluded by default, matching NG86/SNPGenie).")
+@click.option("-w", "--window-size", default=1000, show_default=True, help="Sliding window size in bp.")
+@click.option("-W", "--window-step", default=100, show_default=True, type=click.IntRange(min=1),
+              help="Sliding window step in bp.")
+@click.option("-t", "--threads", default=1, show_default=True, help="Number of parallel threads.")
+@click.option("-s", "--sample", default=None,
+              help="Sample name to analyse.  [pool mode only, for multi-sample VCFs]")
+@click.option("-S", "--samples", default=None,
+              help="Comma-separated sample names.  [individual mode only]")
+@click.option("--samples-file", default=None, type=click.Path(exists=True, dir_okay=False),
+              help="File with one sample name per line.  [individual mode only]")
+@click.option("--min-call-rate", default=None, type=float,
+              help="Minimum genotype call rate.  [individual mode only, default: 0.8]")
+@click.option("--min-an", default=None, type=int,
+              help="Minimum allele number (AN).  [individual mode only, default: 2]")
 def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
         pass_only, keep_multiallelic, include_stop_codons, window_size,
         window_step, threads, sample, samples, samples_file, min_call_rate,
         min_an):
-    """Run piN/piS analysis."""
+    """Run piN/piS analysis.
+
+    \b
+    Estimate per-gene and sliding-window piN/piS from variant calls.  Two
+    analysis modes are supported:
+      pool        — allele-frequency based (pool-seq / single-sample VCF)
+      individual  — genotype based (multi-sample VCF with GT fields)
+
+    \b
+    Outputs (written to --outdir):
+      gene_results.tsv    Per-gene piN, piS, piN/piS, and site counts
+      window_results.tsv  Sliding-window piN/piS along each chromosome
+      summary.tsv         Genome-wide weighted-average statistics
+
+    \b
+    Examples:
+      # Pool-seq (default mode), basic usage:
+      pie run -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/
+
+    \b
+      # Pool-seq with stricter filters and 8 threads:
+      pie run -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/ \\
+          -d 20 -q 30 --pass-only -t 8
+
+    \b
+      # Multi-sample pool VCF — select one sample:
+      pie run -v multi.vcf.gz -g genes.gff3 -f ref.fa -o out/ -s SampleA
+
+    \b
+      # Individual mode — all samples in VCF:
+      pie run -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ -m individual
+
+    \b
+      # Individual mode — subset of samples:
+      pie run -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ -m ind \\
+          -S sampleA,sampleB,sampleC
+
+    \b
+      # Individual mode — samples from a file:
+      pie run -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ -m ind \\
+          --samples-file sample_list.txt --min-call-rate 0.9
+    """
     from pie.vcf import ensure_indexed, get_sample_names
     from pie.parallel import run_parallel
     from pie.io import write_gene_results, write_window_results, write_summary
@@ -213,13 +281,24 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
     click.echo(f"Done. Results written to {outdir}/")
 
 
-@main.command()
-@click.option("--gene-results", required=True, help="Path to gene_results.tsv")
-@click.option("--output", required=True, help="Output plot path (PNG)")
-@click.option("--width", default=16.0, show_default=True, help="Figure width (inches)")
-@click.option("--height", default=6.0, show_default=True, help="Figure height (inches)")
+@main.command(no_args_is_help=True, context_settings=_HELP_OPTS)
+@click.option("-i", "--gene-results", required=True, help="Path to gene_results.tsv from 'pie run'.")
+@click.option("-o", "--output", required=True, help="Output plot path (e.g. manhattan.png).")
+@click.option("-W", "--width", default=16.0, show_default=True, help="Figure width in inches.")
+@click.option("-H", "--height", default=6.0, show_default=True, help="Figure height in inches.")
 def plot(gene_results, output, width, height):
-    """Create Manhattan plot from results."""
+    """Create Manhattan plot from gene results.
+
+    \b
+    Generate a genome-wide Manhattan-style plot of per-gene piN/piS ratios.
+    Genes are ordered along the x-axis by chromosomal position; the y-axis
+    shows piN/piS.  A dashed line at piN/piS = 1 marks neutral expectation.
+
+    \b
+    Examples:
+      pie plot -i results/gene_results.tsv -o manhattan.png
+      pie plot -i results/gene_results.tsv -o fig.png -W 20 -H 8
+    """
     from pie.plot import manhattan_plot
 
     if not os.path.exists(gene_results):
@@ -230,10 +309,19 @@ def plot(gene_results, output, width, height):
     click.echo(f"Plot saved to {output}")
 
 
-@main.command()
+@main.command(context_settings=_HELP_OPTS)
 @click.argument("summary_file")
 def summary(summary_file):
-    """Print summary statistics from summary.tsv."""
+    """Print summary statistics from summary.tsv.
+
+    \b
+    Display genome-wide weighted-average piN, piS, and piN/piS from a
+    summary file produced by 'pie run'.
+
+    \b
+    Examples:
+      pie summary results/summary.tsv
+    """
     import pandas as pd
 
     if not os.path.exists(summary_file):

@@ -84,44 +84,29 @@ pandas, matplotlib, click.
 
 ```bash
 # Pool-seq mode (default)
-pie run \
-  --vcf variants.vcf.gz \
-  --gff genes.gff3 \
-  --fasta reference.fa \
-  --outdir results/ \
-  --threads 8
+pie run -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
+
+# Pool-seq with stricter filters
+pie run -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+  -d 20 -q 30 --pass-only -t 8
 
 # Individual-sequencing mode (all samples)
-pie run --mode individual \
-  --vcf multi_sample.vcf.gz \
-  --gff genes.gff3 \
-  --fasta reference.fa \
-  --outdir results/ \
-  --threads 8
+pie run -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+  -m individual -t 8
 
 # Individual mode with selected samples
-pie run --mode individual \
-  --samples S1,S2,S3 \
-  --vcf multi_sample.vcf.gz \
-  --gff genes.gff3 \
-  --fasta reference.fa \
-  --outdir results/
+pie run -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+  -m ind -S S1,S2,S3
 
 # Individual mode with sample list file
-pie run --mode individual \
-  --samples-file samples.txt \
-  --vcf multi_sample.vcf.gz \
-  --gff genes.gff3 \
-  --fasta reference.fa \
-  --outdir results/
+pie run -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+  -m ind --samples-file samples.txt --min-call-rate 0.9
 
 # View summary
 pie summary results/summary.tsv
 
 # Generate Manhattan plot
-pie plot \
-  --gene-results results/gene_results.tsv \
-  --output results/piN_piS_manhattan.png
+pie plot -i results/gene_results.tsv -o results/piN_piS_manhattan.png
 ```
 
 ## Input requirements
@@ -139,50 +124,52 @@ mode, allele frequencies are derived from GT (genotype) fields:
 
 ## CLI reference
 
+All commands support `-h`/`--help`.  Use `pie -V` to print the version.
+
 ### `pie run`
 
 Run the piN/piS analysis.
 
 ```
-pie run --vcf FILE --gff FILE --fasta FILE --outdir DIR [OPTIONS]
+pie run -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--vcf` | required | Input VCF file (bgzipped or plain) |
-| `--gff` | required | GFF3 or GTF annotation file |
-| `--fasta` | required | Reference FASTA file |
-| `--outdir` | required | Output directory (created if absent) |
-| `--mode` | pool | Analysis mode: `pool` or `individual` (alias `ind`) |
-| `--min-freq` | 0.01 | Minimum alt allele frequency |
-| `--min-depth` | 10 | Minimum read depth at variant site (pool mode only) |
-| `--min-qual` | 20.0 | Minimum variant QUAL score |
-| `--pass-only` | off | Only use PASS-filtered variants |
-| `--keep-multiallelic` | off | Keep and merge multiallelic sites instead of skipping them |
-| `--include-stop-codons` | off | Count stop-gained mutations as nonsynonymous (by default they are excluded, matching NG86/SNPGenie) |
-| `--window-size` | 1000 | Sliding window size in bp |
-| `--window-step` | 100 | Sliding window step in bp |
-| `--threads` | 1 | Number of parallel worker processes |
-| `--sample` | — | Sample name to analyse (pool mode only; required for multi-sample VCFs) |
-| `--samples` | all | Comma-separated sample names (individual mode only; defaults to all VCF samples) |
-| `--samples-file` | — | File with one sample name per line (individual mode only; mutually exclusive with `--samples`) |
-| `--min-call-rate` | 0.8 | Minimum genotype call rate per site (individual mode only; range 0–1) |
-| `--min-an` | 2 | Minimum allele number (AN) per site (individual mode only) |
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--vcf` | `-v` | required | Input VCF file (bgzipped or plain) |
+| `--gff` | `-g` | required | GFF3 or GTF annotation file |
+| `--fasta` | `-f` | required | Reference FASTA file (indexed) |
+| `--outdir` | `-o` | required | Output directory (created if absent) |
+| `--mode` | `-m` | pool | Analysis mode: `pool` or `individual` (alias `ind`) |
+| `--min-freq` | | 0.01 | Minimum alt allele frequency |
+| `--min-depth` | `-d` | 10 | Minimum read depth at variant site (pool mode only) |
+| `--min-qual` | `-q` | 20.0 | Minimum variant QUAL score |
+| `--pass-only` | | off | Only use PASS-filtered variants |
+| `--keep-multiallelic` | | off | Keep and merge multiallelic sites instead of skipping them |
+| `--include-stop-codons` | | off | Count stop-gained mutations as nonsynonymous (by default they are excluded, matching NG86/SNPGenie) |
+| `--window-size` | `-w` | 1000 | Sliding window size in bp |
+| `--window-step` | `-W` | 100 | Sliding window step in bp |
+| `--threads` | `-t` | 1 | Number of parallel worker processes |
+| `--sample` | `-s` | — | Sample name to analyse (pool mode only; required for multi-sample VCFs) |
+| `--samples` | `-S` | all | Comma-separated sample names (individual mode only; defaults to all VCF samples) |
+| `--samples-file` | | — | File with one sample name per line (individual mode only; mutually exclusive with `--samples`) |
+| `--min-call-rate` | | 0.8 | Minimum genotype call rate per site (individual mode only; range 0–1) |
+| `--min-an` | | 2 | Minimum allele number (AN) per site (individual mode only) |
 
 ### `pie plot`
 
 Generate a Manhattan plot from gene results.
 
 ```
-pie plot --gene-results FILE --output FILE [OPTIONS]
+pie plot -i FILE -o FILE [OPTIONS]
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--gene-results` | required | Path to `gene_results.tsv` |
-| `--output` | required | Output PNG path |
-| `--width` | 16.0 | Figure width in inches |
-| `--height` | 6.0 | Figure height in inches |
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--gene-results` | `-i` | required | Path to `gene_results.tsv` |
+| `--output` | `-o` | required | Output PNG path |
+| `--width` | `-W` | 16.0 | Figure width in inches |
+| `--height` | `-H` | 6.0 | Figure height in inches |
 
 ### `pie summary`
 
@@ -203,7 +190,7 @@ more samples, `pie` will abort and list the available sample names. Use
 `--sample` to select one:
 
 ```bash
-pie run --vcf multi.vcf.gz --sample pool_A --gff genes.gff3 --fasta ref.fa --outdir results/
+pie run -v multi.vcf.gz -g genes.gff3 -f ref.fa -o results/ -s pool_A
 ```
 
 When `--sample` is given, output files are prefixed with the sample name
