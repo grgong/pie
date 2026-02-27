@@ -66,6 +66,14 @@ class GeneResult:
     mean_variant_depth: float
     n_variants: int
     codon_results: list[CodonResult] = field(default_factory=list)
+    n_samples: int | None = None
+    call_rates: list[float] | None = None
+
+    @property
+    def mean_call_rate(self) -> float | None:
+        if self.call_rates is None or len(self.call_rates) == 0:
+            return None
+        return sum(self.call_rates) / len(self.call_rates)
 
     @property
     def piN(self) -> float:
@@ -338,6 +346,9 @@ def compute_gene_diversity(
     else:
         mean_variant_depth = 0.0
 
+    # Collect per-variant call rates (individual mode only)
+    cr_list = [v.call_rate for v in all_variants if v.call_rate is not None]
+
     return GeneResult(
         gene_id=gene.gene_id,
         transcript_id=gene.transcript_id,
@@ -354,4 +365,5 @@ def compute_gene_diversity(
         mean_variant_depth=mean_variant_depth,
         n_variants=len(all_variants),
         codon_results=codon_results,
+        call_rates=cr_list if cr_list else None,
     )
