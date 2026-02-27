@@ -16,7 +16,8 @@ class Variant:
     ref: str      # reference allele
     alt: str      # alternate allele
     freq: float   # alt allele frequency (0-1)
-    depth: int    # total depth
+    depth: int    # total depth (read depth in pool mode, AN in individual mode)
+    call_rate: float | None = None  # fraction of called samples (individual mode only)
 
 
 def ensure_indexed(vcf_path: str) -> str:
