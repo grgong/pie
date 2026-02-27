@@ -17,3 +17,12 @@ docs/plans
 # Analysis outputs
 results/
 
+# Benchmark generated data (regenerate via run_benchmark.sh)
+benchmark/Acyrthosiphon_pisum.gtf
+benchmark/SRR27175631.filtered.snps.vcf
+benchmark/benchmark_results.tsv
+benchmark/pie_t*/
+benchmark/snpgenie_input/
+benchmark/snpgenie_work/
+benchmark/slurm-*
+
