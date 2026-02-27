@@ -1,4 +1,4 @@
-"""pie CLI — piN/piS Estimator for pool-seq and individual genotype data."""
+"""pie CLI — piN/piS Estimator for pool-seq and individual-sequencing data."""
 import logging
 import os
 import sys
@@ -13,7 +13,7 @@ log = logging.getLogger("pie")
 @click.group()
 @click.version_option(version=__version__)
 def main():
-    """pie — piN/piS Estimator for pool-seq data."""
+    """pie — piN/piS Estimator for pool-seq and individual-sequencing data."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
