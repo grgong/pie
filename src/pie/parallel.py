@@ -3,9 +3,9 @@
 import logging
 from multiprocessing import Pool
 
-from pie.annotation import GeneModel, parse_annotations
+from pie.annotation import GeneModel, NoGenesFoundError, parse_annotations
 from pie.reference import ReferenceGenome
-from pie.vcf import IndividualVariantReader, VariantReader
+from pie.vcf import IndividualVariantReader, VariantReader, get_vcf_contigs
 from pie.diversity import compute_gene_diversity, GeneResult
 
 log = logging.getLogger(__name__)
@@ -45,9 +45,15 @@ def _worker_cleanup():
 
 def _process_gene(gene: GeneModel) -> GeneResult:
     """Process a single gene using worker-local handles."""
-    result = compute_gene_diversity(gene, _ref, _vcf, exclude_stops=_exclude_stops)
-    result.n_samples = _n_samples
-    return result
+    try:
+        result = compute_gene_diversity(gene, _ref, _vcf, exclude_stops=_exclude_stops)
+        result.n_samples = _n_samples
+        return result
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed processing gene {gene.gene_id} "
+            f"({gene.chrom}:{gene.start}-{gene.end}): {exc!r}"
+        ) from exc
 
 
 def run_parallel(
@@ -73,6 +79,34 @@ def run_parallel(
     """
     genes = parse_annotations(gff_path)
     log.info("Parsed %d genes from %s", len(genes), gff_path)
+
+    if not genes:
+        raise NoGenesFoundError(
+            f"No genes with CDS features found in {gff_path}. "
+            "Ensure the annotation contains 'gene' features with child CDS records."
+        )
+
+    # Pre-flight: verify contig name overlap between annotation and VCF
+    gene_contigs = {g.chrom for g in genes}
+    vcf_contigs = get_vcf_contigs(vcf_path)
+    shared = gene_contigs & vcf_contigs
+    if not shared:
+        missing_sample = sorted(gene_contigs)[:5]
+        vcf_sample = sorted(vcf_contigs)[:5]
+        raise ValueError(
+            f"No contig names shared between annotation and VCF. "
+            f"Annotation contigs (first 5): {missing_sample}; "
+            f"VCF contigs (first 5): {vcf_sample}. "
+            f"Check for naming mismatches (e.g. 'chr1' vs '1')."
+        )
+    missing = gene_contigs - vcf_contigs
+    if missing:
+        log.warning(
+            "%d of %d annotation contig(s) absent from VCF: %s",
+            len(missing), len(gene_contigs),
+            ", ".join(sorted(missing)[:10])
+            + (" ..." if len(missing) > 10 else ""),
+        )
 
     init_args = (fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,

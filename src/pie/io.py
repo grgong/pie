@@ -121,7 +121,7 @@ def write_summary(results: list[GeneResult], path: str) -> None:
     """Write single-row genome-wide summary TSV."""
     total_genes = len(results)
     total_codons = sum(r.n_codons for r in results)
-    total_variants = sum(r.n_variants for r in results)
+    cds_snp_variants = sum(r.n_variants for r in results)
 
     total_N_sites = sum(r.N_sites for r in results)
     total_S_sites = sum(r.S_sites for r in results)
@@ -140,7 +140,7 @@ def write_summary(results: list[GeneResult], path: str) -> None:
     row = {
         "total_genes": total_genes,
         "total_codons": total_codons,
-        "total_variants": total_variants,
+        "cds_snp_variants": cds_snp_variants,
         "genome_piN": genome_piN,
         "genome_piS": genome_piS,
         "genome_piN_piS": genome_piN_piS if genome_piN_piS is not None else "NA",

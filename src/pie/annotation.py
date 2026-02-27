@@ -11,6 +11,10 @@ import gffutils
 log = logging.getLogger(__name__)
 
 
+class NoGenesFoundError(ValueError):
+    """Raised when annotation parsing yields zero usable genes."""
+
+
 @dataclass
 class GeneModel:
     gene_id: str
