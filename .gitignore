@@ -11,6 +11,9 @@ data/Acyrthosiphon_pisum/
 
 docs/plans
 
+# Cached annotation databases
+*.pie.db
+
 # Analysis outputs
 results/
 
