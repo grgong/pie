@@ -283,6 +283,30 @@ class TestIndividualVariantReader:
             assert 5 not in positions
 
 
+    def test_duplicate_samples_uses_loaded_count(self, individual_vcf_file):
+        """Duplicate sample names: n_samples should reflect loaded (deduplicated) count."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S1", "S2"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            # cyvcf2 deduplicates: only S1, S2 loaded
+            assert reader.n_samples == 2
+            variants = reader.fetch("chr1", 0, 10)
+            v6 = next(v for v in variants if v.pos == 5)
+            # S1: 0/1, S2: 0/0 -> called=2, call_rate=2/2=1.0
+            assert abs(v6.call_rate - 1.0) < 1e-6
+
+    def test_samples_none_uses_all(self, individual_vcf_file):
+        """samples=None loads all VCF samples."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=None,
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            assert reader.n_samples == 4
+
+
 class TestIndividualMultiallelic:
     def test_default_skips_multiallelic(self, individual_multiallelic_vcf_file):
         """pos 7 has ALT=A,C -> multiallelic, skipped by default."""

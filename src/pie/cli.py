@@ -151,6 +151,18 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
             click.echo("Error: no samples specified or resolved.", err=True)
             sys.exit(1)
 
+        # Deduplicate sample names (preserving order)
+        seen = set()
+        deduped = []
+        for s in selected_samples:
+            if s not in seen:
+                seen.add(s)
+                deduped.append(s)
+        if len(deduped) < len(selected_samples):
+            log.warning("Duplicate sample names removed: %d -> %d unique",
+                        len(selected_samples), len(deduped))
+            selected_samples = deduped
+
         # Validate sample names exist in VCF
         if samples is not None or samples_file is not None:
             missing = [s for s in selected_samples if s not in vcf_samples]

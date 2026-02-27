@@ -236,7 +236,7 @@ class IndividualVariantReader:
         self._min_call_rate = min_call_rate
         self._min_an = min_an
         self._vcf = VCF(vcf_path, samples=samples)
-        self._n_samples = len(samples)
+        self._n_samples = len(self._vcf.samples)
 
     def close(self):
         self._vcf.close()
