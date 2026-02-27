@@ -5,21 +5,35 @@ from multiprocessing import Pool
 
 from pie.annotation import GeneModel, parse_annotations
 from pie.reference import ReferenceGenome
-from pie.vcf import VariantReader
+from pie.vcf import IndividualVariantReader, VariantReader
 from pie.diversity import compute_gene_diversity, GeneResult
 
 log = logging.getLogger(__name__)
 
 
 def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
-                 pass_only, keep_multiallelic, exclude_stops, sample):
+                 pass_only, keep_multiallelic, exclude_stops, sample,
+                 mode, samples, min_call_rate, min_an):
     """Initialize per-worker file handles (stored in globals)."""
-    global _ref, _vcf, _exclude_stops
+    global _ref, _vcf, _exclude_stops, _n_samples
     _ref = ReferenceGenome(fasta_path)
-    _vcf = VariantReader(vcf_path, min_freq=min_freq, min_depth=min_depth,
-                         min_qual=min_qual, pass_only=pass_only,
-                         keep_multiallelic=keep_multiallelic, sample=sample)
     _exclude_stops = exclude_stops
+
+    if mode == "individual":
+        _vcf = IndividualVariantReader(
+            vcf_path, samples=samples, min_freq=min_freq,
+            min_qual=min_qual, pass_only=pass_only,
+            keep_multiallelic=keep_multiallelic,
+            min_call_rate=min_call_rate, min_an=min_an,
+        )
+        _n_samples = _vcf.n_samples
+    else:
+        _vcf = VariantReader(
+            vcf_path, min_freq=min_freq, min_depth=min_depth,
+            min_qual=min_qual, pass_only=pass_only,
+            keep_multiallelic=keep_multiallelic, sample=sample,
+        )
+        _n_samples = None
 
 
 def _worker_cleanup():
@@ -31,7 +45,9 @@ def _worker_cleanup():
 
 def _process_gene(gene: GeneModel) -> GeneResult:
     """Process a single gene using worker-local handles."""
-    return compute_gene_diversity(gene, _ref, _vcf, exclude_stops=_exclude_stops)
+    result = compute_gene_diversity(gene, _ref, _vcf, exclude_stops=_exclude_stops)
+    result.n_samples = _n_samples
+    return result
 
 
 def run_parallel(
@@ -46,6 +62,10 @@ def run_parallel(
     exclude_stops: bool = True,
     threads: int = 1,
     sample: str | None = None,
+    mode: str = "pool",
+    samples: list[str] | None = None,
+    min_call_rate: float = 0.8,
+    min_an: int = 2,
 ) -> list[GeneResult]:
     """Run piN/piS analysis across all genes.
 
@@ -54,10 +74,13 @@ def run_parallel(
     genes = parse_annotations(gff_path)
     log.info("Parsed %d genes from %s", len(genes), gff_path)
 
+    init_args = (fasta_path, vcf_path, min_freq, min_depth, min_qual,
+                 pass_only, keep_multiallelic, exclude_stops, sample,
+                 mode, samples, min_call_rate, min_an)
+
     if threads <= 1:
         # Single-threaded: no multiprocessing overhead
-        _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
-                     pass_only, keep_multiallelic, exclude_stops, sample)
+        _worker_init(*init_args)
         try:
             results = [_process_gene(g) for g in genes]
         finally:
@@ -66,8 +89,7 @@ def run_parallel(
         with Pool(
             processes=threads,
             initializer=_worker_init,
-            initargs=(fasta_path, vcf_path, min_freq, min_depth, min_qual,
-                      pass_only, keep_multiallelic, exclude_stops, sample),
+            initargs=init_args,
         ) as pool:
             results = pool.map(_process_gene, genes)
 

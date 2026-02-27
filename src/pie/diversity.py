@@ -1,7 +1,7 @@
 """Core piN/piS diversity engine using the Nei-Gojobori method.
 
 Computes per-gene nonsynonymous (piN) and synonymous (piS) nucleotide
-diversity from pooled sequencing data.
+diversity from pool-seq or individual-sequencing data.
 """
 
 import logging
@@ -20,11 +20,19 @@ from pie.codon import (
     S_SITES_EXCL_STOP,
     is_stop_codon,
 )
+from typing import Protocol
+
 from pie.annotation import GeneModel
 from pie.reference import ReferenceGenome
-from pie.vcf import VariantReader, Variant
+from pie.vcf import Variant
 
 log = logging.getLogger(__name__)
+
+
+class VariantReaderLike(Protocol):
+    """Protocol for variant readers (VariantReader or IndividualVariantReader)."""
+
+    def fetch(self, chrom: str, start: int, end: int) -> list[Variant]: ...
 
 # Base encoding: A=0, C=1, G=2, T=3
 _BASE_TO_IDX = {"A": 0, "C": 1, "G": 2, "T": 3}
@@ -66,6 +74,14 @@ class GeneResult:
     mean_variant_depth: float
     n_variants: int
     codon_results: list[CodonResult] = field(default_factory=list)
+    n_samples: int | None = None
+    call_rates: list[float] | None = None
+
+    @property
+    def mean_call_rate(self) -> float | None:
+        if self.call_rates is None or len(self.call_rates) == 0:
+            return None
+        return sum(self.call_rates) / len(self.call_rates)
 
     @property
     def piN(self) -> float:
@@ -241,7 +257,7 @@ def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> di
 def compute_gene_diversity(
     gene: GeneModel,
     ref: ReferenceGenome,
-    vcf: VariantReader,
+    vcf: VariantReaderLike,
     exclude_stops: bool = False,
 ) -> GeneResult:
     """Compute per-gene piN/piS diversity.
@@ -338,6 +354,9 @@ def compute_gene_diversity(
     else:
         mean_variant_depth = 0.0
 
+    # Collect per-variant call rates (individual mode only)
+    cr_list = [v.call_rate for v in all_variants if v.call_rate is not None]
+
     return GeneResult(
         gene_id=gene.gene_id,
         transcript_id=gene.transcript_id,
@@ -354,4 +373,5 @@ def compute_gene_diversity(
         mean_variant_depth=mean_variant_depth,
         n_variants=len(all_variants),
         codon_results=codon_results,
+        call_rates=cr_list if cr_list else None,
     )

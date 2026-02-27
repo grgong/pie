@@ -84,6 +84,53 @@ chr1\t195\t.\tA\tT\t45\t.\t.\tGT:DP:AD\t0/1:100:60,40
 
 
 @pytest.fixture
+def individual_vcf_file(tmp_path):
+    """Multi-sample VCF with GT fields for individual-mode testing.
+
+    4 diploid samples (S1-S4), same positions as test data:
+      pos 6   T>C  S1:0/1  S2:0/0  S3:0/1  S4:./.  -> called=3, AN=6, AC=2, freq=1/3, call_rate=0.75
+      pos 7   G>A  S1:0/0  S2:0/1  S3:0/1  S4:0/0  -> called=4, AN=8, AC=2, freq=1/4, call_rate=1.00
+      pos 195 A>T  S1:0/1  S2:0/1  S3:1/1  S4:0/1  -> called=4, AN=8, AC=5, freq=5/8, call_rate=1.00
+      pos 297 A>G  S1:0/1  S2:./.  S3:./.  S4:0/0  -> called=2, AN=4, AC=1, freq=1/4, call_rate=0.50
+    """
+    vcf_content = """\
+##fileformat=VCFv4.2
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=chr1,length=350>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4
+chr1\t6\t.\tT\tC\t30\t.\t.\tGT\t0/1\t0/0\t0/1\t./.
+chr1\t7\t.\tG\tA\t50\t.\t.\tGT\t0/0\t0/1\t0/1\t0/0
+chr1\t195\t.\tA\tT\t45\t.\t.\tGT\t0/1\t0/1\t1/1\t0/1
+chr1\t297\t.\tA\tG\t15\t.\t.\tGT\t0/1\t./.\t./.\t0/0
+"""
+    vcf_path = tmp_path / "individual.vcf"
+    vcf_path.write_text(vcf_content)
+    return _bgzip_and_index(vcf_path)
+
+
+@pytest.fixture
+def individual_multiallelic_vcf_file(tmp_path):
+    """Multi-sample VCF with a multiallelic site for individual-mode testing.
+
+      pos 6   T>C    S1:0/1  S2:0/0  S3:0/1  S4:0/0  -> AN=8, AC=2, freq=1/4
+      pos 7   G>A,C  S1:0/1  S2:0/2  S3:1/2  S4:1/2  -> AN=8, AC_A=3, AC_C=3, freq_A=3/8, freq_C=3/8
+      pos 195 A>T    S1:0/1  S2:0/0  S3:0/1  S4:0/1  -> AN=8, AC=3, freq=3/8
+    """
+    vcf_content = """\
+##fileformat=VCFv4.2
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=chr1,length=350>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4
+chr1\t6\t.\tT\tC\t30\t.\t.\tGT\t0/1\t0/0\t0/1\t0/0
+chr1\t7\t.\tG\tA,C\t50\t.\t.\tGT\t0/1\t0/2\t1/2\t1/2
+chr1\t195\t.\tA\tT\t45\t.\t.\tGT\t0/1\t0/0\t0/1\t0/1
+"""
+    vcf_path = tmp_path / "individual_multiallelic.vcf"
+    vcf_path.write_text(vcf_content)
+    return _bgzip_and_index(vcf_path)
+
+
+@pytest.fixture
 def real_ref_fasta():
     path = REAL_DATA_DIR / "Acyrthosiphon_pisum.fa"
     if not path.exists():

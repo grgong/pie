@@ -1,19 +1,28 @@
-# pie -- piN/piS Estimator for pool-seq data
+# pie -- piN/piS Estimator
 
 <p align="center">
   <img src="logo.png" alt="pie logo" width="400" />
 </p>
 
 Estimate nonsynonymous (piN) and synonymous (piS) nucleotide diversity
-from pooled sequencing data on large eukaryotic genomes. Reimplements the
-Nei-Gojobori method from SNPGenie in a numpy-vectorized Python stack with
-gene-level multiprocessing.
+from **pool-seq** or **individual-sequencing** data on large eukaryotic
+genomes.
+
+Two analysis modes:
+
+- **Pool mode** (default): Derives allele frequencies from AD (allele
+  depth) fields in pool-seq VCFs.
+- **Individual mode**: Derives allele frequencies from GT (genotype)
+  fields across multiple diploid samples — a site-frequency based
+  approximation consistent with pairwise diversity under the model
+  assumptions.
 
 ## Comparison with SNPGenie
 
 `pie` reimplements the Nei-Gojobori pool-seq method from
 [SNPGenie](https://github.com/chasewnelson/SNPGenie) (Nelson et al., 2015)
-in a numpy-vectorized Python stack with gene-level multiprocessing.
+in a numpy-vectorized Python stack with gene-level multiprocessing, and
+extends it with an individual-sequencing mode.
 
 **Stop codon site counting.**
 SNPGenie excludes stop-producing mutations from site counting: for a
@@ -74,13 +83,37 @@ pandas, matplotlib, click.
 ## Quick start
 
 ```bash
-# Run analysis
+# Pool-seq mode (default)
 pie run \
   --vcf variants.vcf.gz \
   --gff genes.gff3 \
   --fasta reference.fa \
   --outdir results/ \
   --threads 8
+
+# Individual-sequencing mode (all samples)
+pie run --mode individual \
+  --vcf multi_sample.vcf.gz \
+  --gff genes.gff3 \
+  --fasta reference.fa \
+  --outdir results/ \
+  --threads 8
+
+# Individual mode with selected samples
+pie run --mode individual \
+  --samples S1,S2,S3 \
+  --vcf multi_sample.vcf.gz \
+  --gff genes.gff3 \
+  --fasta reference.fa \
+  --outdir results/
+
+# Individual mode with sample list file
+pie run --mode individual \
+  --samples-file samples.txt \
+  --vcf multi_sample.vcf.gz \
+  --gff genes.gff3 \
+  --fasta reference.fa \
+  --outdir results/
 
 # View summary
 pie summary results/summary.tsv
@@ -95,12 +128,14 @@ pie plot \
 
 | Input | Format | Notes |
 |-------|--------|-------|
-| VCF | `.vcf` or `.vcf.gz` | Freebayes pool-seq mode. Single- or multi-sample; use `--sample` for multi-sample VCFs. Multiallelic sites are skipped by default; use `--keep-multiallelic` to merge them instead. Accepts both decomposed (`bcftools norm -m-`) and non-decomposed VCFs. Plain VCF is auto-bgzipped; missing `.tbi` index is auto-created. |
+| VCF | `.vcf` or `.vcf.gz` | Single- or multi-sample. Multiallelic sites are skipped by default; use `--keep-multiallelic` to merge them. Accepts both decomposed (`bcftools norm -m-`) and non-decomposed VCFs. Plain VCF is auto-bgzipped; missing `.tbi` index is auto-created. See [Multi-sample VCFs](#multi-sample-vcfs) for sample selection. |
 | Annotation | GFF3 or GTF | Must contain gene, mRNA/transcript, and CDS features. Format is auto-detected. |
 | Reference | FASTA | Must match the VCF reference. Auto-indexed by pysam if `.fai` is missing. |
 
-Allele frequencies are extracted from the AD (allele depth) format field.
-Falls back to INFO AF/DP if AD is unavailable.
+In pool mode, allele frequencies are extracted from the AD (allele depth)
+format field, falling back to INFO AF/DP if AD is unavailable. In individual
+mode, allele frequencies are derived from GT (genotype) fields:
+`freq = alt_allele_count / (2 × called_samples)`.
 
 ## CLI reference
 
@@ -118,8 +153,9 @@ pie run --vcf FILE --gff FILE --fasta FILE --outdir DIR [OPTIONS]
 | `--gff` | required | GFF3 or GTF annotation file |
 | `--fasta` | required | Reference FASTA file |
 | `--outdir` | required | Output directory (created if absent) |
+| `--mode` | pool | Analysis mode: `pool` or `individual` (alias `ind`) |
 | `--min-freq` | 0.01 | Minimum alt allele frequency |
-| `--min-depth` | 10 | Minimum read depth at variant site |
+| `--min-depth` | 10 | Minimum read depth at variant site (pool mode only) |
 | `--min-qual` | 20.0 | Minimum variant QUAL score |
 | `--pass-only` | off | Only use PASS-filtered variants |
 | `--keep-multiallelic` | off | Keep and merge multiallelic sites instead of skipping them |
@@ -127,7 +163,11 @@ pie run --vcf FILE --gff FILE --fasta FILE --outdir DIR [OPTIONS]
 | `--window-size` | 1000 | Sliding window size in bp |
 | `--window-step` | 100 | Sliding window step in bp |
 | `--threads` | 1 | Number of parallel worker processes |
-| `--sample` | auto | Sample name to analyse (required for multi-sample VCFs) |
+| `--sample` | — | Sample name to analyse (pool mode only; required for multi-sample VCFs) |
+| `--samples` | all | Comma-separated sample names (individual mode only; defaults to all VCF samples) |
+| `--samples-file` | — | File with one sample name per line (individual mode only; mutually exclusive with `--samples`) |
+| `--min-call-rate` | 0.8 | Minimum genotype call rate per site (individual mode only; range 0–1) |
+| `--min-an` | 2 | Minimum allele number (AN) per site (individual mode only) |
 
 ### `pie plot`
 
@@ -156,6 +196,8 @@ Takes the path to `summary.tsv` as a positional argument.
 
 ## Multi-sample VCFs
 
+### Pool mode
+
 By default, `pie` expects a single-sample VCF. If the VCF contains two or
 more samples, `pie` will abort and list the available sample names. Use
 `--sample` to select one:
@@ -169,10 +211,22 @@ When `--sample` is given, output files are prefixed with the sample name
 `pool_A.summary.tsv`). Single-sample VCFs do not require `--sample` and
 produce unprefixed filenames as before.
 
+### Individual mode
+
+In individual mode (`--mode individual`), `pie` uses all samples in the VCF
+by default. Use `--samples` (comma-separated) or `--samples-file` (one name
+per line) to select a subset. See the [Quick start](#quick-start) for
+examples.
+
+Allele frequencies are computed per site as `AC / AN`, where AC is the
+alternate allele count and AN = 2 × called_samples (diploid). Sites with
+call rate below `--min-call-rate` or AN below `--min-an` are skipped.
+
 ## Output files
 
-All outputs are written to `--outdir`. When `--sample` is specified, each
-filename is prefixed with `{sample}.` (e.g., `pool_A.gene_results.tsv`).
+All outputs are written to `--outdir`. In pool mode, when `--sample` is
+specified, each filename is prefixed with `{sample}.`
+(e.g., `pool_A.gene_results.tsv`).
 
 ### `gene_results.tsv`
 
@@ -194,8 +248,10 @@ One row per gene. Columns:
 | piN | N_diffs / N_sites |
 | piS | S_diffs / S_sites |
 | piN_piS | piN / piS (NA when piS = 0) |
-| mean_variant_depth | Mean read depth across variant sites (0 when no variants) |
+| mean_variant_depth | Pool mode: mean read depth; individual mode: mean AN across variant sites (0 when no variants) |
 | n_variants | SNP count within CDS |
+| n_samples | Number of selected samples (individual mode only) |
+| mean_call_rate | Mean genotype call rate across variant sites (individual mode only) |
 
 ### `window_results.tsv`
 
@@ -208,6 +264,8 @@ piS, piN_piS.
 Single-row genome-wide summary: total_genes, total_codons,
 total_variants, genome_piN, genome_piS, genome_piN_piS,
 mean_gene_piN, mean_gene_piS, median_gene_piN, median_gene_piS.
+In individual mode, two additional columns are included:
+n_samples_selected and mean_call_rate (variant-site-weighted average).
 
 Genome-wide piN and piS are computed by summing N/S diffs and sites
 across all genes before dividing (not averaging per-gene ratios).
@@ -220,8 +278,8 @@ piN/piS = 1 (neutral expectation).
 
 ## Algorithm
 
-`pie` uses the Nei-Gojobori (1986) method adapted for pool-seq allele
-frequencies.
+`pie` uses the Nei-Gojobori (1986) method adapted for allele frequency
+data from pool-seq or individual-sequencing experiments.
 
 ### Site counting
 
@@ -237,19 +295,26 @@ that position contributes N = 1/2 and S = 1/2 (counting only the two
 sense→sense changes). Use `--include-stop-codons` to instead count
 stop-gained mutations as nonsynonymous.
 
-### Handling pool-seq frequencies
+### Allele frequency handling
 
-At each codon, allele frequencies from the VCF are used to enumerate all
-possible codon haplotypes via the product of per-position allele
-frequencies. For a codon with variants at positions 1 and 3:
+In pool mode, per-site allele frequencies are extracted from the AD
+(allele depth) format field. In individual mode, frequencies are derived
+from diploid genotypes across selected samples: `freq = AC / AN`, where
+AC is the alternate allele count and AN = 2 × called_samples. Missing
+genotypes (`./.`) are excluded; only called samples contribute to AC
+and AN.
+
+### Codon haplotype enumeration
+
+Regardless of mode, per-site allele frequencies are used to enumerate
+all possible codon haplotypes via the product of per-position
+frequencies (linkage equilibrium assumption). For a codon with variants
+at positions 1 and 3:
 
 ```
 p1: {A: 0.95, C: 0.05}   p2: {G: 1.0}   p3: {T: 0.80, A: 0.20}
   -> AGT (0.76), AGA (0.19), CGT (0.04), CGA (0.01)
 ```
-
-This assumes linkage equilibrium between positions within a codon, which
-is inherent to pool-seq data where individual haplotypes are not observed.
 
 Site counts are the frequency-weighted sum across codon haplotypes.
 Pairwise differences are computed for all haplotype pairs, weighted by

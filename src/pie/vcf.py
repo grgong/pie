@@ -16,7 +16,8 @@ class Variant:
     ref: str      # reference allele
     alt: str      # alternate allele
     freq: float   # alt allele frequency (0-1)
-    depth: int    # total depth
+    depth: int    # total depth (read depth in pool mode, AN in individual mode)
+    call_rate: float | None = None  # fraction of called samples (individual mode only)
 
 
 def ensure_indexed(vcf_path: str) -> str:
@@ -214,3 +215,141 @@ class VariantReader:
             freq = 0.0
 
         return int(depth), freq, 0, 0
+
+
+class IndividualVariantReader:
+    """Variant reader for individual-sequencing data (GT-based frequencies).
+
+    Derives pooled allele frequencies from genotype fields across selected
+    diploid samples.  Exposes the same ``fetch()`` interface as
+    ``VariantReader`` so downstream code is unchanged.
+    """
+
+    def __init__(self, vcf_path: str, samples: list[str] | None = None,
+                 min_freq: float = 0.01, min_qual: float = 20.0,
+                 pass_only: bool = False, keep_multiallelic: bool = False,
+                 min_call_rate: float = 0.8, min_an: int = 2):
+        self._min_freq = min_freq
+        self._min_qual = min_qual
+        self._pass_only = pass_only
+        self._keep_multiallelic = keep_multiallelic
+        self._min_call_rate = min_call_rate
+        self._min_an = min_an
+        self._vcf = VCF(vcf_path, samples=samples)
+        self._n_samples = len(self._vcf.samples)
+
+    def close(self):
+        self._vcf.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    @property
+    def n_samples(self) -> int:
+        return self._n_samples
+
+    def fetch(self, chrom: str, start: int, end: int) -> list[Variant]:
+        """Fetch filtered variants in region (0-based, half-open).
+
+        Per-record logic (single GT pass):
+        1. QUAL/PASS/REF filters
+        2. One pass through selected samples' GT:
+           - Count called samples, accumulate ref/alt allele counts
+           - AN = 2 * called (diploid)
+        3. Check call_rate >= min_call_rate and AN >= min_an
+        4. For each ALT with alt_count > 0: freq = alt_count / AN
+        5. Multiallelic grouping, then min_freq filter
+        """
+        region = f"{chrom}:{start + 1}-{end}"
+
+        # (pos, ref, alt, freq, AN, ref_count, alt_count, call_rate)
+        raw: list[tuple[int, str, str, float, int, int, int, float]] = []
+        multiallelic_pos: set[int] = set()
+        seen_pos: dict[int, int] = {}
+
+        for record in self._vcf(region):
+            if self._pass_only and record.FILTER is not None:
+                continue
+            if record.QUAL is not None and record.QUAL < self._min_qual:
+                continue
+            if record.REF not in _VALID_BASES:
+                continue
+
+            pos0 = record.POS - 1
+
+            # Track multiallelic positions
+            n_valid = sum(1 for a in record.ALT if a in _VALID_BASES)
+            seen_pos[pos0] = seen_pos.get(pos0, 0) + n_valid
+            if seen_pos[pos0] > 1:
+                multiallelic_pos.add(pos0)
+
+            # --- Single-pass GT extraction ---
+            n_alts = len(record.ALT)
+            called = 0
+            ref_count = 0
+            alt_counts = [0] * n_alts
+
+            for gt in record.genotypes:  # [allele1, allele2, is_phased]
+                a1, a2 = gt[0], gt[1]
+                if a1 < 0 or a2 < 0:
+                    continue
+                called += 1
+                for allele in (a1, a2):
+                    if allele == 0:
+                        ref_count += 1
+                    elif 1 <= allele <= n_alts:
+                        alt_counts[allele - 1] += 1
+
+            if called == 0:
+                continue
+
+            call_rate = called / self._n_samples
+            if call_rate < self._min_call_rate:
+                continue
+
+            an = 2 * called
+            if an < self._min_an:
+                continue
+
+            for alt_idx, alt_allele in enumerate(record.ALT):
+                if alt_allele not in _VALID_BASES:
+                    continue
+                ac = alt_counts[alt_idx]
+                if ac == 0:
+                    continue
+                freq = ac / an
+                raw.append((pos0, record.REF, alt_allele, freq, an,
+                            ref_count, ac, call_rate))
+
+        if not raw:
+            return []
+
+        # Group by position for multiallelic handling
+        by_pos: dict[int, list[tuple]] = {}
+        for rec in raw:
+            by_pos.setdefault(rec[0], []).append(rec)
+
+        variants: list[Variant] = []
+        for pos in sorted(by_pos):
+            group = by_pos[pos]
+            is_multiallelic = pos in multiallelic_pos
+            if not is_multiallelic:
+                p, ref, alt, freq, depth, _, _, cr = group[0]
+                if freq < self._min_freq:
+                    continue
+                variants.append(Variant(pos=p, ref=ref, alt=alt,
+                                        freq=freq, depth=depth, call_rate=cr))
+            elif not self._keep_multiallelic:
+                continue
+            else:
+                for r in group:
+                    p, ref, alt, freq, depth, _, _, cr = r
+                    if freq >= self._min_freq:
+                        variants.append(Variant(pos=p, ref=ref, alt=alt,
+                                                freq=freq, depth=depth,
+                                                call_rate=cr))
+
+        return variants

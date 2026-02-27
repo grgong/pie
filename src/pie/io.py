@@ -10,12 +10,13 @@ from pie.diversity import GeneResult
 
 def write_gene_results(results: list[GeneResult], path: str) -> None:
     """Write per-gene TSV with piN, piS, and piN/piS columns."""
+    ind_mode = any(r.n_samples is not None for r in results)
     rows = []
     for r in results:
         piN = r.piN
         piS = r.piS
         piN_piS = r.piN_piS  # None when piS == 0
-        rows.append({
+        row = {
             "chrom": r.chrom,
             "gene_id": r.gene_id,
             "transcript_id": r.transcript_id,
@@ -33,7 +34,11 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
             "piN_piS": piN_piS if piN_piS is not None else "NA",
             "mean_variant_depth": r.mean_variant_depth,
             "n_variants": r.n_variants,
-        })
+        }
+        if ind_mode:
+            row["n_samples"] = r.n_samples
+            row["mean_call_rate"] = r.mean_call_rate
+        rows.append(row)
     df = pd.DataFrame(rows)
     if not df.empty:
         # Convert "NA" strings to actual NaN for proper TSV handling
@@ -114,6 +119,8 @@ def write_summary(results: list[GeneResult], path: str) -> None:
     gene_piNs = [r.piN for r in results]
     gene_piSs = [r.piS for r in results]
 
+    ind_mode = any(r.n_samples is not None for r in results)
+
     row = {
         "total_genes": total_genes,
         "total_codons": total_codons,
@@ -126,6 +133,15 @@ def write_summary(results: list[GeneResult], path: str) -> None:
         "median_gene_piN": float(np.median(gene_piNs)) if gene_piNs else 0.0,
         "median_gene_piS": float(np.median(gene_piSs)) if gene_piSs else 0.0,
     }
+    if ind_mode:
+        row["n_samples_selected"] = results[0].n_samples if results else 0
+        all_call_rates = []
+        for r in results:
+            if r.call_rates:
+                all_call_rates.extend(r.call_rates)
+        row["mean_call_rate"] = (
+            sum(all_call_rates) / len(all_call_rates) if all_call_rates else 0.0
+        )
     df = pd.DataFrame([row])
     df["genome_piN_piS"] = pd.to_numeric(df["genome_piN_piS"], errors="coerce")
     df.to_csv(path, sep="\t", index=False)

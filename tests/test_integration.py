@@ -190,3 +190,101 @@ class TestCrossFormat:
             for i in range(len(df_gff)):
                 assert abs(df_gff.iloc[i][col] - df_gtf.iloc[i][col]) < 1e-6, \
                     f"Mismatch in {col} for gene {df_gff.iloc[i]['gene_id']}"
+
+
+class TestIndividualMode:
+    """End-to-end tests for --mode individual using GT-derived frequencies."""
+
+    def _run_individual(self, runner, ref_fasta, gff3_file, individual_vcf_file,
+                        tmp_path, min_qual=0, min_call_rate=0):
+        result = runner.invoke(main, [
+            "run", "--mode", "individual",
+            "--vcf", individual_vcf_file,
+            "--gff", gff3_file,
+            "--fasta", ref_fasta,
+            "--outdir", str(tmp_path),
+            "--min-freq", "0",
+            "--min-qual", str(min_qual),
+            "--min-call-rate", str(min_call_rate),
+            "--min-an", "0",
+            "--window-size", "30",
+            "--window-step", "10",
+        ])
+        assert result.exit_code == 0, result.output
+        return tmp_path
+
+    def test_gene1_individual(self, runner, ref_fasta, gff3_file,
+                               individual_vcf_file, tmp_path):
+        """Gene1: pos6 T>C syn freq=1/3, pos7 G>A nonsyn freq=1/4."""
+        out = self._run_individual(runner, ref_fasta, gff3_file,
+                                    individual_vcf_file, tmp_path)
+        df = pd.read_csv(out / "gene_results.tsv", sep="\t")
+        g1 = df[df["gene_id"].str.contains("gene1", case=False)].iloc[0]
+
+        assert g1["n_codons"] == 29
+        assert g1["n_poly_codons"] == 2
+        assert g1["n_variants"] == 2
+        assert abs(g1["N_sites"] - 59.6667) < 0.001
+        assert abs(g1["S_sites"] - 27.3333) < 0.001
+        assert abs(g1["N_diffs"] - 0.375) < 1e-6    # 2*(3/4)*(1/4)
+        assert abs(g1["S_diffs"] - 4 / 9) < 1e-6    # 2*(2/3)*(1/3)
+
+    def test_gene2_individual(self, runner, ref_fasta, gff3_file,
+                               individual_vcf_file, tmp_path):
+        """Gene2: pos195 A>T nonsyn freq=5/8."""
+        out = self._run_individual(runner, ref_fasta, gff3_file,
+                                    individual_vcf_file, tmp_path)
+        df = pd.read_csv(out / "gene_results.tsv", sep="\t")
+        g2 = df[df["gene_id"].str.contains("gene2", case=False)].iloc[0]
+
+        assert g2["n_poly_codons"] == 1
+        assert abs(g2["N_diffs"] - 15 / 32) < 1e-6  # 2*(3/8)*(5/8)
+        assert g2["S_diffs"] == 0.0
+
+    def test_gene3_individual(self, runner, ref_fasta, gff3_file,
+                               individual_vcf_file, tmp_path):
+        """Gene3: pos297 syn freq=1/4."""
+        out = self._run_individual(runner, ref_fasta, gff3_file,
+                                    individual_vcf_file, tmp_path)
+        df = pd.read_csv(out / "gene_results.tsv", sep="\t")
+        g3 = df[df["gene_id"].str.contains("gene3", case=False)].iloc[0]
+
+        assert abs(g3["S_diffs"] - 0.375) < 1e-6    # 2*(3/4)*(1/4)
+        assert g3["N_diffs"] == 0.0
+
+    def test_output_has_sample_metadata(self, runner, ref_fasta, gff3_file,
+                                         individual_vcf_file, tmp_path):
+        """Individual mode outputs include n_samples and mean_call_rate."""
+        out = self._run_individual(runner, ref_fasta, gff3_file,
+                                    individual_vcf_file, tmp_path)
+        df = pd.read_csv(out / "gene_results.tsv", sep="\t")
+        assert "n_samples" in df.columns
+        assert "mean_call_rate" in df.columns
+        assert (df["n_samples"] == 4).all()
+
+    def test_summary_has_sample_metadata(self, runner, ref_fasta, gff3_file,
+                                          individual_vcf_file, tmp_path):
+        out = self._run_individual(runner, ref_fasta, gff3_file,
+                                    individual_vcf_file, tmp_path)
+        df = pd.read_csv(out / "summary.tsv", sep="\t")
+        assert "n_samples_selected" in df.columns
+        assert df.iloc[0]["n_samples_selected"] == 4
+
+    def test_min_call_rate_filters_variants(self, runner, ref_fasta, gff3_file,
+                                             individual_vcf_file, tmp_path):
+        """min_call_rate=0.8 filters pos6 (0.75) and pos297 (0.50)."""
+        out = self._run_individual(runner, ref_fasta, gff3_file,
+                                    individual_vcf_file, tmp_path,
+                                    min_call_rate=0.8)
+        df = pd.read_csv(out / "gene_results.tsv", sep="\t")
+        g1 = df[df["gene_id"].str.contains("gene1", case=False)].iloc[0]
+        # Only pos7 passes -> 1 variant in gene1
+        assert g1["n_variants"] == 1
+
+    def test_all_output_files_created(self, runner, ref_fasta, gff3_file,
+                                       individual_vcf_file, tmp_path):
+        out = self._run_individual(runner, ref_fasta, gff3_file,
+                                    individual_vcf_file, tmp_path)
+        assert (out / "gene_results.tsv").exists()
+        assert (out / "window_results.tsv").exists()
+        assert (out / "summary.tsv").exists()
