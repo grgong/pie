@@ -149,10 +149,7 @@ def ref_with_n_fasta(tmp_path):
         "CAGCAGCAGCAGCAGCATCAGCAGCAGCCATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     )
     seq[3] = "N"  # codon 2 becomes NCT
-    fa_path = tmp_path / "ref_with_n.fa"
-    fa_path.write_text(">chr1\n" + "".join(seq) + "\n")
-    subprocess.run(["samtools", "faidx", str(fa_path)], check=True)
-    return str(fa_path)
+    return write_fasta(tmp_path / "ref_with_n.fa", {"chr1": "".join(seq)})
 
 
 @pytest.fixture
@@ -170,10 +167,7 @@ def ref_all_n_fasta(tmp_path):
     )
     for i in range(90):
         seq[i] = "N"
-    fa_path = tmp_path / "ref_all_n.fa"
-    fa_path.write_text(">chr1\n" + "".join(seq) + "\n")
-    subprocess.run(["samtools", "faidx", str(fa_path)], check=True)
-    return str(fa_path)
+    return write_fasta(tmp_path / "ref_all_n.fa", {"chr1": "".join(seq)})
 
 
 @pytest.fixture
@@ -215,7 +209,7 @@ def mismatch_vcf_file(tmp_path):
 """
     vcf_path = tmp_path / "mismatch.vcf"
     vcf_path.write_text(vcf_content)
-    return _bgzip_and_index(vcf_path)
+    return bgzip_and_index(vcf_path)
 
 
 @pytest.fixture
