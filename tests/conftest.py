@@ -1,11 +1,17 @@
 # tests/conftest.py
-import subprocess
-
 import pytest
+from click.testing import CliRunner
 from pathlib import Path
+
+from tests.helpers import bgzip_and_index, write_fasta  # noqa: F401 (re-exported)
 
 DATA_DIR = Path(__file__).parent / "data"
 REAL_DATA_DIR = Path(__file__).parents[1] / "data" / "Acyrthosiphon_pisum"
+
+
+@pytest.fixture
+def runner():
+    return CliRunner()
 
 
 @pytest.fixture
@@ -35,15 +41,6 @@ def plain_vcf_file():
 
 # --- Real dataset fixtures (Acyrthosiphon pisum, 400 genes) ---
 
-def _bgzip_and_index(vcf_path):
-    """Bgzip and tabix-index a plain VCF file. Returns .vcf.gz path."""
-    gz_path = str(vcf_path) + ".gz"
-    with open(gz_path, "wb") as out:
-        subprocess.run(["bgzip", "-c", str(vcf_path)], stdout=out, check=True)
-    subprocess.run(["tabix", "-p", "vcf", gz_path], check=True)
-    return gz_path
-
-
 @pytest.fixture
 def multiallelic_vcf_file(tmp_path):
     """VCF with a multiallelic site (two decomposed records at pos 7)."""
@@ -61,7 +58,7 @@ chr1\t195\t.\tA\tT\t45\t.\t.\tGT:DP:AD\t0/1:100:60,40
 """
     vcf_path = tmp_path / "multiallelic.vcf"
     vcf_path.write_text(vcf_content)
-    return _bgzip_and_index(vcf_path)
+    return bgzip_and_index(vcf_path)
 
 
 @pytest.fixture
@@ -80,7 +77,7 @@ chr1\t195\t.\tA\tT\t45\t.\t.\tGT:DP:AD\t0/1:100:60,40
 """
     vcf_path = tmp_path / "multiallelic_inline.vcf"
     vcf_path.write_text(vcf_content)
-    return _bgzip_and_index(vcf_path)
+    return bgzip_and_index(vcf_path)
 
 
 @pytest.fixture
@@ -105,7 +102,7 @@ chr1\t297\t.\tA\tG\t15\t.\t.\tGT\t0/1\t./.\t./.\t0/0
 """
     vcf_path = tmp_path / "individual.vcf"
     vcf_path.write_text(vcf_content)
-    return _bgzip_and_index(vcf_path)
+    return bgzip_and_index(vcf_path)
 
 
 @pytest.fixture
@@ -127,7 +124,7 @@ chr1\t195\t.\tA\tT\t45\t.\t.\tGT\t0/1\t0/0\t0/1\t0/1
 """
     vcf_path = tmp_path / "individual_multiallelic.vcf"
     vcf_path.write_text(vcf_content)
-    return _bgzip_and_index(vcf_path)
+    return bgzip_and_index(vcf_path)
 
 
 # --- Robustness fixtures (PR#9: Issues #2, #4, #7) ---

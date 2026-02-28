@@ -111,12 +111,6 @@ def run_parallel(
             + (" ..." if len(missing) > 10 else ""),
             n_before - len(genes), len(genes),
         )
-        if not genes:
-            raise ValueError(
-                f"All {n_before} genes are on contigs absent from the VCF. "
-                f"Annotation contigs: {sorted(gene_contigs)[:5]}; "
-                f"VCF contigs: {sorted(vcf_contigs)[:5]}."
-            )
 
     init_args = (fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,

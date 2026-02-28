@@ -9,44 +9,18 @@ Covers:
   6. summary.tsv uses cds_snp_variants (not total_variants)
 """
 
-import subprocess
 import textwrap
 
 import pandas as pd
 import pytest
-from click.testing import CliRunner
 
+from tests.helpers import bgzip_and_index, write_fasta
 from pie.annotation import NoGenesFoundError
 from pie.cli import main
-from pie.diversity import GeneResult, compute_gene_diversity
+from pie.diversity import compute_gene_diversity
 from pie.parallel import run_parallel
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _bgzip_and_index(vcf_path):
-    """Bgzip and tabix-index a plain VCF file.  Returns .vcf.gz path."""
-    gz_path = str(vcf_path) + ".gz"
-    with open(gz_path, "wb") as out:
-        subprocess.run(["bgzip", "-c", str(vcf_path)], stdout=out, check=True)
-    subprocess.run(["tabix", "-p", "vcf", gz_path], check=True)
-    return gz_path
-
-
-def _write_fasta(path, sequences: dict[str, str]):
-    """Write a multi-sequence FASTA and samtools-index it."""
-    with open(path, "w") as fh:
-        for name, seq in sequences.items():
-            fh.write(f">{name}\n{seq}\n")
-    subprocess.run(["samtools", "faidx", str(path)], check=True)
-    return str(path)
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
+from pie.reference import ReferenceGenome
+from pie.vcf import VariantReader
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +86,7 @@ class TestZeroSharedContigs:
             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
             scaffold_1\t10\t.\tA\tG\t50\t.\t.
         """))
-        vcf_gz = _bgzip_and_index(vcf_wrong)
+        vcf_gz = bgzip_and_index(vcf_wrong)
 
         with pytest.raises(ValueError, match="No contig names shared"):
             run_parallel(ref_fasta, gff3_file, vcf_gz,
@@ -128,7 +102,7 @@ class TestZeroSharedContigs:
             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
             scaffold_1\t10\t.\tA\tG\t50\t.\t.
         """))
-        vcf_gz = _bgzip_and_index(vcf_wrong)
+        vcf_gz = bgzip_and_index(vcf_wrong)
 
         result = runner.invoke(main, [
             "run", "--vcf", vcf_gz, "--gff", gff3_file,
@@ -150,7 +124,7 @@ class TestPartialContigMismatch:
     def two_contig_data(self, tmp_path):
         """Create a dataset with genes on chr1 and chr2, VCF only has chr1."""
         # Reference: chr1 (350bp) + chr2 (90bp)
-        ref_path = _write_fasta(tmp_path / "two_contig.fa", {
+        ref_path = write_fasta(tmp_path / "two_contig.fa", {
             "chr1": (
                 "ATGGCTGATGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTG"
                 "CTGCTGCTGCTGCTGCTTAAAAAAAAAAAAATGGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTGCTG"
@@ -184,7 +158,7 @@ class TestPartialContigMismatch:
             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE
             chr1\t6\t.\tT\tC\t30\t.\t.\tGT:DP:AD\t0/1:100:80,20
         """))
-        vcf_gz = _bgzip_and_index(vcf_path)
+        vcf_gz = bgzip_and_index(vcf_path)
 
         return ref_path, str(gff_path), vcf_gz
 
@@ -227,14 +201,6 @@ class TestAmbiguousReferenceCodon:
     """Reference genome with N bases should not crash; those codons are skipped."""
 
     @pytest.fixture
-    def ref_with_n(self, tmp_path):
-        """Reference with N bases in the middle of a CDS."""
-        # 90bp: ATG GCT NNN GCT × 26 TAA
-        # codon 3 (NNN) should be skipped
-        seq = "ATGGCT" + "NNN" + "GCT" * 26 + "TAA"
-        return _write_fasta(tmp_path / "ref_with_n.fa", {"chr1": seq})
-
-    @pytest.fixture
     def gff_one_gene(self, tmp_path):
         gff = tmp_path / "one_gene.gff3"
         gff.write_text(textwrap.dedent("""\
@@ -254,14 +220,18 @@ class TestAmbiguousReferenceCodon:
             ##contig=<ID=chr1,length=90>
             #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
         """))
-        return _bgzip_and_index(vcf)
+        return bgzip_and_index(vcf)
 
-    def test_n_bases_skipped_without_crash(self, runner, ref_with_n,
-                                            gff_one_gene, empty_vcf, tmp_path):
+    def test_n_bases_skipped_without_crash(self, runner, gff_one_gene,
+                                            empty_vcf, tmp_path):
         """Pipeline completes successfully when reference has N bases."""
+        # 90bp: ATG GCT NNN GCT × 26 TAA — codon 3 (NNN) should be skipped
+        seq = "ATGGCT" + "NNN" + "GCT" * 26 + "TAA"
+        ref_path = write_fasta(tmp_path / "ref_with_n.fa", {"chr1": seq})
+
         result = runner.invoke(main, [
             "run", "--vcf", empty_vcf, "--gff", gff_one_gene,
-            "--fasta", ref_with_n, "--outdir", str(tmp_path / "out"),
+            "--fasta", ref_path, "--outdir", str(tmp_path / "out"),
             "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
         assert result.exit_code == 0, result.output
@@ -273,35 +243,16 @@ class TestAmbiguousReferenceCodon:
         assert g["N_sites"] > 0
         assert g["n_variants"] == 0
 
-    def test_all_n_reference_returns_empty(self, tmp_path):
+    def test_all_n_reference_returns_empty(self, gff_one_gene, empty_vcf,
+                                            tmp_path):
         """CDS with all-N reference → GeneResult with n_codons=0."""
-        from pie.annotation import GeneModel
-        from pie.reference import ReferenceGenome
-        from pie.vcf import VariantReader
-
-        seq = "N" * 90
-        ref_path = _write_fasta(tmp_path / "all_n.fa", {"chr1": seq})
-
-        gff = tmp_path / "gene.gff3"
-        gff.write_text(textwrap.dedent("""\
-            ##gff-version 3
-            chr1\ttest\tgene\t1\t90\t.\t+\t.\tID=gene1
-            chr1\ttest\tmRNA\t1\t90\t.\t+\t.\tID=mRNA1;Parent=gene1
-            chr1\ttest\tCDS\t1\t90\t.\t+\t0\tID=cds1;Parent=mRNA1
-        """))
-
-        vcf = tmp_path / "empty.vcf"
-        vcf.write_text(textwrap.dedent("""\
-            ##fileformat=VCFv4.2
-            ##contig=<ID=chr1,length=90>
-            #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
-        """))
-        vcf_gz = _bgzip_and_index(vcf)
+        ref_path = write_fasta(tmp_path / "all_n.fa", {"chr1": "N" * 90})
 
         from pie.annotation import parse_annotations
-        genes = parse_annotations(str(gff))
+        genes = parse_annotations(gff_one_gene)
         ref = ReferenceGenome(ref_path)
-        vcf_reader = VariantReader(vcf_gz, min_freq=0, min_depth=0, min_qual=0)
+        vcf_reader = VariantReader(empty_vcf, min_freq=0, min_depth=0,
+                                   min_qual=0)
 
         result = compute_gene_diversity(genes[0], ref, vcf_reader)
         ref.close()
