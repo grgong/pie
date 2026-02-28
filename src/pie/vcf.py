@@ -60,14 +60,16 @@ class Variant:
 
 def ensure_indexed(vcf_path: str) -> str:
     """Ensure VCF is bgzipped and tabix-indexed. Returns path to .vcf.gz."""
+    need_index = False
     if vcf_path.endswith(".vcf"):
         gz_path = vcf_path + ".gz"
         log.info("Bgzipping %s -> %s", vcf_path, gz_path)
         pysam.tabix_compress(vcf_path, gz_path, force=True)
         vcf_path = gz_path
+        need_index = True  # always re-index after fresh compression
 
     tbi_path = vcf_path + ".tbi"
-    if not os.path.exists(tbi_path):
+    if need_index or not os.path.exists(tbi_path):
         log.info("Creating tabix index for %s", vcf_path)
         pysam.tabix_index(vcf_path, preset="vcf", force=True)
 
