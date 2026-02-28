@@ -229,7 +229,8 @@ class VariantReader(_BaseVariantReader):
                 if ref_count < 0 or alt_count < 0:
                     raise ValueError("missing AD value")
                 # Total depth across all alleles at this site
-                total = sum(int(x) for x in ad[0] if int(x) >= 0)
+                vals = [int(x) for x in ad[0]]
+                total = sum(v for v in vals if v >= 0)
                 if total > 0:
                     return total, alt_count / total, ref_count, alt_count
         except (KeyError, IndexError, TypeError, ValueError):

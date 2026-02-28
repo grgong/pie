@@ -33,9 +33,7 @@ class ReferenceGenome:
         Returns:
             List of 3-letter codon strings in reading frame order.
         """
-        cds_seq = ""
-        for chrom, start, end in exons:
-            cds_seq += self.fetch(chrom, start, end)
+        cds_seq = "".join(self.fetch(chrom, start, end) for chrom, start, end in exons)
         if strand == "-":
             cds_seq = cds_seq[::-1].translate(_COMPLEMENT)
         n_complete = (len(cds_seq) // 3) * 3
@@ -48,16 +46,17 @@ class ReferenceGenome:
 
         Returns: [(chrom, pos1, pos2, pos3), ...] where pos are 0-based genomic.
         """
-        bases: list[tuple[str, int]] = []
+        chrom_list: list[str] = []
+        pos_list: list[int] = []
         for chrom, start, end in exons:
-            for pos in range(start, end):
-                bases.append((chrom, pos))
+            n = end - start
+            chrom_list.extend([chrom] * n)
+            pos_list.extend(range(start, end))
         if strand == "-":
-            bases = bases[::-1]
-        n_complete = (len(bases) // 3) * 3
-        bases = bases[:n_complete]
-        codons = []
-        for i in range(0, len(bases), 3):
-            chrom = bases[i][0]
-            codons.append((chrom, bases[i][1], bases[i + 1][1], bases[i + 2][1]))
-        return codons
+            chrom_list.reverse()
+            pos_list.reverse()
+        n_complete = (len(pos_list) // 3) * 3
+        return [
+            (chrom_list[i], pos_list[i], pos_list[i + 1], pos_list[i + 2])
+            for i in range(0, n_complete, 3)
+        ]

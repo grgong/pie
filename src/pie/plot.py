@@ -43,8 +43,8 @@ def manhattan_plot(
     chroms = sorted(
         chroms,
         key=lambda c: (
-            not c.replace("chr", "").isdigit(),
-            int(c.replace("chr", "")) if c.replace("chr", "").isdigit() else c,
+            not str(c).replace("chr", "").isdigit(),
+            int(str(c).replace("chr", "")) if str(c).replace("chr", "").isdigit() else str(c),
         ),
     )
 

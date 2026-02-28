@@ -32,6 +32,22 @@ class TestManhattanPlot:
         manhattan_plot(str(tsv), str(out), width=20, height=8)
         assert out.exists()
 
+    def test_numeric_chrom_ids(self, tmp_path):
+        """Chromosome IDs that are numeric (1, 2) must not crash .replace()."""
+        df = pd.DataFrame({
+            "chrom": [1, 1, 2, 2],
+            "gene_id": ["g1", "g2", "g3", "g4"],
+            "start": [100, 500, 100, 800],
+            "end": [200, 600, 300, 900],
+            "piN_piS": [0.5, 1.2, 0.8, 2.0],
+        })
+        tsv = tmp_path / "gene_results.tsv"
+        df.to_csv(tsv, sep="\t", index=False)
+        out = tmp_path / "manhattan.png"
+        manhattan_plot(str(tsv), str(out))
+        assert out.exists()
+        assert out.stat().st_size > 0
+
     def test_handles_all_na(self, tmp_path):
         df = pd.DataFrame({
             "chrom": ["chr1"],

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bisect import bisect_left, bisect_right
+from bisect import bisect_left
 
 import numpy as np
 import pandas as pd
@@ -33,7 +33,7 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
             "S_diffs": r.S_diffs,
             "piN": piN,
             "piS": piS,
-            "piN_piS": piN_piS if piN_piS is not None else "NA",
+            "piN_piS": piN_piS,
             "mean_variant_depth": r.mean_variant_depth,
             "n_variants": r.n_variants,
         }
@@ -42,9 +42,6 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
             row["mean_call_rate"] = r.mean_call_rate
         rows.append(row)
     df = pd.DataFrame(rows)
-    if not df.empty:
-        # Convert "NA" strings to actual NaN for proper TSV handling
-        df["piN_piS"] = pd.to_numeric(df["piN_piS"], errors="coerce")
     df.to_csv(path, sep="\t", index=False)
 
 
@@ -67,16 +64,13 @@ def write_window_results(
         cds_min = pos_arr[0]
         cds_max = pos_arr[-1]
 
-        # Prefix sums (length n+1, prefix[0] = 0)
-        pre_N_sites = [0.0] * (n + 1)
-        pre_S_sites = [0.0] * (n + 1)
-        pre_N_diffs = [0.0] * (n + 1)
-        pre_S_diffs = [0.0] * (n + 1)
-        for i, cr in enumerate(codons):
-            pre_N_sites[i + 1] = pre_N_sites[i] + cr.N_sites
-            pre_S_sites[i + 1] = pre_S_sites[i] + cr.S_sites
-            pre_N_diffs[i + 1] = pre_N_diffs[i] + cr.N_diffs
-            pre_S_diffs[i + 1] = pre_S_diffs[i] + cr.S_diffs
+        # Prefix sums via numpy (length n+1, prefix[0] = 0)
+        vals = np.array(
+            [(cr.N_sites, cr.S_sites, cr.N_diffs, cr.S_diffs) for cr in codons],
+            dtype=np.float64,
+        )
+        prefix = np.zeros((n + 1, 4), dtype=np.float64)
+        np.cumsum(vals, axis=0, out=prefix[1:])
 
         chrom = r.chrom
         gene_id = r.gene_id
@@ -87,10 +81,10 @@ def write_window_results(
             lo = bisect_left(pos_arr, win_start)
             hi = bisect_left(pos_arr, win_end)
             n_codons = hi - lo
-            N_sites = pre_N_sites[hi] - pre_N_sites[lo]
-            S_sites = pre_S_sites[hi] - pre_S_sites[lo]
-            N_diffs = pre_N_diffs[hi] - pre_N_diffs[lo]
-            S_diffs = pre_S_diffs[hi] - pre_S_diffs[lo]
+            N_sites = prefix[hi, 0] - prefix[lo, 0]
+            S_sites = prefix[hi, 1] - prefix[lo, 1]
+            N_diffs = prefix[hi, 2] - prefix[lo, 2]
+            S_diffs = prefix[hi, 3] - prefix[lo, 3]
             piN = N_diffs / N_sites if N_sites > 0 else 0.0
             piS = S_diffs / S_sites if S_sites > 0 else 0.0
             piN_piS = piN / piS if piS > 0 else None
@@ -107,13 +101,11 @@ def write_window_results(
                 "S_diffs": S_diffs,
                 "piN": piN,
                 "piS": piS,
-                "piN_piS": piN_piS if piN_piS is not None else "NA",
+                "piN_piS": piN_piS,
             })
             win_start += window_step
 
     df = pd.DataFrame(rows)
-    if not df.empty:
-        df["piN_piS"] = pd.to_numeric(df["piN_piS"], errors="coerce")
     df.to_csv(path, sep="\t", index=False)
 
 
@@ -143,7 +135,7 @@ def write_summary(results: list[GeneResult], path: str) -> None:
         "cds_snp_variants": cds_snp_variants,
         "genome_piN": genome_piN,
         "genome_piS": genome_piS,
-        "genome_piN_piS": genome_piN_piS if genome_piN_piS is not None else "NA",
+        "genome_piN_piS": genome_piN_piS,
         "mean_gene_piN": float(np.mean(gene_piNs)) if gene_piNs else 0.0,
         "mean_gene_piS": float(np.mean(gene_piSs)) if gene_piSs else 0.0,
         "median_gene_piN": float(np.median(gene_piNs)) if gene_piNs else 0.0,
@@ -159,5 +151,4 @@ def write_summary(results: list[GeneResult], path: str) -> None:
             sum(all_call_rates) / len(all_call_rates) if all_call_rates else 0.0
         )
     df = pd.DataFrame([row])
-    df["genome_piN_piS"] = pd.to_numeric(df["genome_piN_piS"], errors="coerce")
     df.to_csv(path, sep="\t", index=False)

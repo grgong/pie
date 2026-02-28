@@ -191,6 +191,94 @@ class TestMultiallelicFiltering:
             assert 6 not in positions
 
 
+class TestADMissingFallback:
+    """Tests for _extract_freq_depth fallback paths when FORMAT/AD is absent."""
+
+    def test_info_af_with_format_dp(self, vcf_no_ad_info_af):
+        """Without AD, freq/depth come from INFO/AF + FORMAT/DP."""
+        with VariantReader(vcf_no_ad_info_af, min_freq=0.0, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            assert len(variants) == 2
+            v1 = next(v for v in variants if v.pos == 5)
+            assert abs(v1.freq - 0.20) < 1e-6
+            assert v1.depth == 100
+            v2 = next(v for v in variants if v.pos == 194)
+            assert abs(v2.freq - 0.40) < 1e-6
+            assert v2.depth == 100
+
+    def test_info_af_with_info_dp_only(self, vcf_no_ad_no_format_dp):
+        """Without AD and without FORMAT/DP, depth falls back to INFO/DP."""
+        with VariantReader(vcf_no_ad_no_format_dp, min_freq=0.0, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            assert len(variants) == 2
+            v1 = next(v for v in variants if v.pos == 5)
+            assert abs(v1.freq - 0.25) < 1e-6
+            assert v1.depth == 80
+            v2 = next(v for v in variants if v.pos == 194)
+            assert abs(v2.freq - 0.50) < 1e-6
+            assert v2.depth == 120
+
+    def test_no_ad_no_af_returns_zero_freq(self, vcf_no_ad_no_af):
+        """Without AD and without INFO/AF, freq is 0.0 — variant filtered by min_freq."""
+        with VariantReader(vcf_no_ad_no_af, min_freq=0.01, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            assert len(variants) == 0  # freq=0.0 < min_freq=0.01
+
+    def test_no_ad_no_af_passes_with_zero_min_freq(self, vcf_no_ad_no_af):
+        """Without AD/AF, freq=0.0 passes when min_freq=0."""
+        with VariantReader(vcf_no_ad_no_af, min_freq=0.0, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            assert len(variants) == 1
+            assert variants[0].freq == 0.0
+            assert variants[0].depth == 100
+
+    def test_multiallelic_keep_no_ad_uses_original_freq(self, vcf_multiallelic_no_ad):
+        """Multiallelic keep-mode without AD falls back to original freq/depth."""
+        with VariantReader(vcf_multiallelic_no_ad, min_freq=0.0, min_depth=0,
+                           min_qual=0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            # pos 7 multiallelic: two decomposed records, no AD → fallback
+            ma = [v for v in variants if v.pos == 6]
+            assert len(ma) == 2
+            va = next(v for v in ma if v.alt == "A")
+            vc = next(v for v in ma if v.alt == "C")
+            assert abs(va.freq - 0.30) < 1e-6  # original INFO/AF preserved
+            assert abs(vc.freq - 0.20) < 1e-6
+            assert va.depth == 100
+            assert vc.depth == 100
+
+    def test_multiallelic_keep_no_ad_respects_min_freq(self, vcf_multiallelic_no_ad):
+        """Multiallelic keep fallback still applies min_freq filter."""
+        with VariantReader(vcf_multiallelic_no_ad, min_freq=0.25, min_depth=0,
+                           min_qual=0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            ma = [v for v in variants if v.pos == 6]
+            assert len(ma) == 1  # only A (0.30) passes, C (0.20) filtered
+            assert ma[0].alt == "A"
+
+    def test_multiallelic_keep_no_ad_respects_min_depth(self, vcf_multiallelic_no_ad):
+        """Multiallelic keep fallback still applies min_depth filter."""
+        with VariantReader(vcf_multiallelic_no_ad, min_freq=0.0, min_depth=200,
+                           min_qual=0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            ma = [v for v in variants if v.pos == 6]
+            assert len(ma) == 0  # depth=100 < min_depth=200
+
+    def test_multiallelic_skip_no_ad(self, vcf_multiallelic_no_ad):
+        """Default keep_multiallelic=False still skips multiallelic without AD."""
+        with VariantReader(vcf_multiallelic_no_ad, min_freq=0.0, min_depth=0,
+                           min_qual=0) as reader:
+            variants = reader.fetch("chr1", 0, 350)
+            positions = [v.pos for v in variants]
+            assert 6 not in positions  # multiallelic skipped
+            assert 5 in positions
+            assert 194 in positions
+
+
 class TestIndividualVariantReader:
     def test_basic_gt_frequency(self, individual_vcf_file):
         """All 4 samples, no filtering. Verify GT-derived frequencies."""

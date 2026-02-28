@@ -81,6 +81,81 @@ chr1\t195\t.\tA\tT\t45\t.\t.\tGT:DP:AD\t0/1:100:60,40
 
 
 @pytest.fixture
+def vcf_no_ad_info_af(tmp_path):
+    """VCF without FORMAT/AD — uses INFO/DP + INFO/AF fallback."""
+    vcf_content = """\
+##fileformat=VCFv4.2
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+##contig=<ID=chr1,length=350>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE
+chr1\t6\t.\tT\tC\t30\t.\tDP=100;AF=0.20\tGT:DP\t0/1:100
+chr1\t195\t.\tA\tT\t45\t.\tDP=100;AF=0.40\tGT:DP\t0/1:100
+"""
+    vcf_path = tmp_path / "no_ad_info_af.vcf"
+    vcf_path.write_text(vcf_content)
+    return bgzip_and_index(vcf_path)
+
+
+@pytest.fixture
+def vcf_no_ad_no_format_dp(tmp_path):
+    """VCF without FORMAT/AD and without FORMAT/DP — uses INFO/DP only."""
+    vcf_content = """\
+##fileformat=VCFv4.2
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##contig=<ID=chr1,length=350>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE
+chr1\t6\t.\tT\tC\t30\t.\tDP=80;AF=0.25\tGT\t0/1
+chr1\t195\t.\tA\tT\t45\t.\tDP=120;AF=0.50\tGT\t0/1
+"""
+    vcf_path = tmp_path / "no_ad_no_format_dp.vcf"
+    vcf_path.write_text(vcf_content)
+    return bgzip_and_index(vcf_path)
+
+
+@pytest.fixture
+def vcf_multiallelic_no_ad(tmp_path):
+    """Multiallelic VCF without FORMAT/AD — keep-mode fallback uses original freq."""
+    vcf_content = """\
+##fileformat=VCFv4.2
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+##contig=<ID=chr1,length=350>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE
+chr1\t6\t.\tT\tC\t30\t.\tDP=100;AF=0.20\tGT:DP\t0/1:100
+chr1\t7\t.\tG\tA\t50\t.\tDP=100;AF=0.30\tGT:DP\t0/1:100
+chr1\t7\t.\tG\tC\t50\t.\tDP=100;AF=0.20\tGT:DP\t0/1:100
+chr1\t195\t.\tA\tT\t45\t.\tDP=100;AF=0.40\tGT:DP\t0/1:100
+"""
+    vcf_path = tmp_path / "multiallelic_no_ad.vcf"
+    vcf_path.write_text(vcf_content)
+    return bgzip_and_index(vcf_path)
+
+
+@pytest.fixture
+def vcf_no_ad_no_af(tmp_path):
+    """VCF without FORMAT/AD and without INFO/AF — freq should be 0.0."""
+    vcf_content = """\
+##fileformat=VCFv4.2
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+##contig=<ID=chr1,length=350>
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE
+chr1\t6\t.\tT\tC\t30\t.\tDP=100\tGT:DP\t0/1:100
+"""
+    vcf_path = tmp_path / "no_ad_no_af.vcf"
+    vcf_path.write_text(vcf_content)
+    return bgzip_and_index(vcf_path)
+
+
+@pytest.fixture
 def individual_vcf_file(tmp_path):
     """Multi-sample VCF with GT fields for individual-mode testing.
 
