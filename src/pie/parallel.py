@@ -86,31 +86,34 @@ def run_parallel(
             "Ensure the annotation contains 'gene' features with child CDS records."
         )
 
-    # Pre-flight: verify contig name overlap between annotation and VCF
+    # Pre-flight: verify contig name overlap between annotation and VCF.
+    # Skip when VCF has no ##contig headers (seqnames empty) — analysis
+    # proceeds normally and fetch() returns no variants for each gene.
     gene_contigs = {g.chrom for g in genes}
     vcf_contigs = get_vcf_contigs(vcf_path)
-    shared = gene_contigs & vcf_contigs
-    if not shared:
-        missing_sample = sorted(gene_contigs)[:5]
-        vcf_sample = sorted(vcf_contigs)[:5]
-        raise ValueError(
-            f"No contig names shared between annotation and VCF. "
-            f"Annotation contigs (first 5): {missing_sample}; "
-            f"VCF contigs (first 5): {vcf_sample}. "
-            f"Check for naming mismatches (e.g. 'chr1' vs '1')."
-        )
-    missing = gene_contigs - vcf_contigs
-    if missing:
-        n_before = len(genes)
-        genes = [g for g in genes if g.chrom in shared]
-        log.warning(
-            "%d of %d annotation contig(s) absent from VCF (%s); "
-            "dropped %d genes on those contigs (%d genes remaining)",
-            len(missing), len(gene_contigs),
-            ", ".join(sorted(missing)[:10])
-            + (" ..." if len(missing) > 10 else ""),
-            n_before - len(genes), len(genes),
-        )
+    if vcf_contigs:
+        shared = gene_contigs & vcf_contigs
+        if not shared:
+            missing_sample = sorted(gene_contigs)[:5]
+            vcf_sample = sorted(vcf_contigs)[:5]
+            raise ValueError(
+                f"No contig names shared between annotation and VCF. "
+                f"Annotation contigs (first 5): {missing_sample}; "
+                f"VCF contigs (first 5): {vcf_sample}. "
+                f"Check for naming mismatches (e.g. 'chr1' vs '1')."
+            )
+        missing = gene_contigs - vcf_contigs
+        if missing:
+            n_before = len(genes)
+            genes = [g for g in genes if g.chrom in shared]
+            log.warning(
+                "%d of %d annotation contig(s) absent from VCF (%s); "
+                "dropped %d genes on those contigs (%d genes remaining)",
+                len(missing), len(gene_contigs),
+                ", ".join(sorted(missing)[:10])
+                + (" ..." if len(missing) > 10 else ""),
+                n_before - len(genes), len(genes),
+            )
 
     init_args = (fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,

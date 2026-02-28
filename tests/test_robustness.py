@@ -75,6 +75,24 @@ class TestNoGenesFoundError:
 # 2. Zero shared contigs → ValueError fail-fast
 # ---------------------------------------------------------------------------
 
+class TestVcfWithoutContigHeaders:
+    """VCFs lacking ##contig headers should not trigger the mismatch error."""
+
+    def test_no_contig_headers_proceeds(self, ref_fasta, gff3_file, tmp_path):
+        """VCF with no ##contig lines → analysis runs, zero variants per gene."""
+        vcf_no_contigs = tmp_path / "no_contigs.vcf"
+        vcf_no_contigs.write_text(textwrap.dedent("""\
+            ##fileformat=VCFv4.2
+            #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+        """))
+        vcf_gz = bgzip_and_index(vcf_no_contigs)
+
+        results = run_parallel(ref_fasta, gff3_file, vcf_gz,
+                               min_freq=0, min_depth=0, min_qual=0)
+        assert len(results) == 3
+        assert all(r.n_variants == 0 for r in results)
+
+
 class TestZeroSharedContigs:
     def test_completely_mismatched_contigs_raises(self, ref_fasta, gff3_file,
                                                    tmp_path):
