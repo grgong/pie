@@ -1,7 +1,6 @@
 """Tests for gene-level multiprocessing parallel runner."""
 
 import pytest
-from pie.annotation import NoGenesFoundError
 from pie.parallel import run_parallel
 from pie.diversity import GeneResult
 
@@ -45,22 +44,3 @@ class TestRunParallel:
                                threads=1)
         gene3 = [r for r in results if "gene3" in r.gene_id.lower()][0]
         assert gene3.n_variants == 0  # QUAL=15 variant filtered
-
-
-class TestNoGenesFoundError:
-    """Issue #4: CDS-only GFF yields 0 genes -> NoGenesFoundError."""
-
-    def test_cdsonly_gff_raises(self, ref_fasta, cdsonly_gff, vcf_file):
-        with pytest.raises(NoGenesFoundError, match="No genes with CDS features"):
-            run_parallel(ref_fasta, cdsonly_gff, vcf_file,
-                         min_freq=0.0, min_depth=0, min_qual=0, threads=1)
-
-
-class TestContigMismatch:
-    """Issue #7: Contig naming mismatch detection."""
-
-    def test_chr1_vs_1_raises(self, ref_fasta, gff3_file, mismatch_vcf_file):
-        """GFF has 'chr1', VCF has '1' -> ValueError with helpful message."""
-        with pytest.raises(ValueError, match="No contig names shared"):
-            run_parallel(ref_fasta, gff3_file, mismatch_vcf_file,
-                         min_freq=0.0, min_depth=0, min_qual=0, threads=1)

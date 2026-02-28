@@ -10,6 +10,44 @@ log = logging.getLogger(__name__)
 _VALID_BASES = frozenset("ACGT")
 
 
+class _BaseVariantReader:
+    """Shared context-manager, contig-tracking, and star-allele logging."""
+
+    _vcf: VCF
+
+    def _init_contig_tracking(self):
+        """Call at end of subclass __init__ after self._vcf is set."""
+        self._contigs: frozenset[str] = frozenset(self._vcf.seqnames)
+        self._missing_contigs: set[str] = set()
+        self._n_star_alleles = 0
+
+    def close(self):
+        if self._missing_contigs:
+            log.warning(
+                "Skipped %d contig(s) absent from VCF: %s",
+                len(self._missing_contigs),
+                ", ".join(sorted(self._missing_contigs)[:20])
+                + (" ..." if len(self._missing_contigs) > 20 else ""),
+            )
+        if self._n_star_alleles:
+            log.info("Skipped %d non-SNP ALT alleles (*, indels)",
+                     self._n_star_alleles)
+        self._vcf.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def _check_contig(self, chrom: str) -> bool:
+        """Return True if chrom exists in VCF; track missing ones."""
+        if chrom not in self._contigs:
+            self._missing_contigs.add(chrom)
+            return False
+        return True
+
+
 @dataclass(slots=True)
 class Variant:
     pos: int      # 0-based genomic position
@@ -53,7 +91,7 @@ def get_vcf_contigs(vcf_path: str) -> frozenset[str]:
     return contigs
 
 
-class VariantReader:
+class VariantReader(_BaseVariantReader):
     def __init__(self, vcf_path: str, min_freq: float = 0.01,
                  min_depth: int = 10, min_qual: float = 20.0,
                  pass_only: bool = False, keep_multiallelic: bool = False,
@@ -67,28 +105,7 @@ class VariantReader:
             self._vcf = VCF(vcf_path, samples=[sample])
         else:
             self._vcf = VCF(vcf_path)
-        self._contigs: frozenset[str] = frozenset(self._vcf.seqnames)
-        self._missing_contigs: set[str] = set()
-        self._n_star_alleles = 0
-
-    def close(self):
-        if self._missing_contigs:
-            log.warning(
-                "Skipped %d contig(s) absent from VCF: %s",
-                len(self._missing_contigs),
-                ", ".join(sorted(self._missing_contigs)[:20])
-                + (" ..." if len(self._missing_contigs) > 20 else ""),
-            )
-        if self._n_star_alleles:
-            log.info("Skipped %d non-SNP ALT alleles (*, indels)",
-                     self._n_star_alleles)
-        self._vcf.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
+        self._init_contig_tracking()
 
     def fetch(self, chrom: str, start: int, end: int) -> list[Variant]:
         """Fetch filtered variants in region (0-based, half-open).
@@ -99,8 +116,7 @@ class VariantReader:
         ``keep_multiallelic=True`` to merge them instead (frequencies
         recomputed from raw allele depths).
         """
-        if chrom not in self._contigs:
-            self._missing_contigs.add(chrom)
+        if not self._check_contig(chrom):
             return []
 
         region = f"{chrom}:{start + 1}-{end}"
@@ -243,7 +259,7 @@ class VariantReader:
         return int(depth), freq, 0, 0
 
 
-class IndividualVariantReader:
+class IndividualVariantReader(_BaseVariantReader):
     """Variant reader for individual-sequencing data (GT-based frequencies).
 
     Derives pooled allele frequencies from genotype fields across selected
@@ -263,28 +279,7 @@ class IndividualVariantReader:
         self._min_an = min_an
         self._vcf = VCF(vcf_path, samples=samples)
         self._n_samples = len(self._vcf.samples)
-        self._contigs: frozenset[str] = frozenset(self._vcf.seqnames)
-        self._missing_contigs: set[str] = set()
-        self._n_star_alleles = 0
-
-    def close(self):
-        if self._missing_contigs:
-            log.warning(
-                "Skipped %d contig(s) absent from VCF: %s",
-                len(self._missing_contigs),
-                ", ".join(sorted(self._missing_contigs)[:20])
-                + (" ..." if len(self._missing_contigs) > 20 else ""),
-            )
-        if self._n_star_alleles:
-            log.info("Skipped %d non-SNP ALT alleles (*, indels)",
-                     self._n_star_alleles)
-        self._vcf.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
+        self._init_contig_tracking()
 
     @property
     def n_samples(self) -> int:
@@ -302,8 +297,7 @@ class IndividualVariantReader:
         4. For each ALT with alt_count > 0: freq = alt_count / AN
         5. Multiallelic grouping, then min_freq filter
         """
-        if chrom not in self._contigs:
-            self._missing_contigs.add(chrom)
+        if not self._check_contig(chrom):
             return []
 
         region = f"{chrom}:{start + 1}-{end}"
