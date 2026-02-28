@@ -1,9 +1,9 @@
 """VCF parsing, filtering, and auto-indexing via cyvcf2."""
 import os
+import subprocess
 import logging
 from dataclasses import dataclass
 from cyvcf2 import VCF
-import pysam
 
 log = logging.getLogger(__name__)
 
@@ -63,13 +63,14 @@ def ensure_indexed(vcf_path: str) -> str:
     if vcf_path.endswith(".vcf"):
         gz_path = vcf_path + ".gz"
         log.info("Bgzipping %s -> %s", vcf_path, gz_path)
-        pysam.tabix_compress(vcf_path, gz_path, force=True)
+        with open(gz_path, "wb") as out:
+            subprocess.run(["bgzip", "-c", vcf_path], stdout=out, check=True)
         vcf_path = gz_path
 
     tbi_path = vcf_path + ".tbi"
     if not os.path.exists(tbi_path):
         log.info("Creating tabix index for %s", vcf_path)
-        pysam.tabix_index(vcf_path, preset="vcf", force=True)
+        subprocess.run(["tabix", "-p", "vcf", vcf_path], check=True)
 
     return vcf_path
 

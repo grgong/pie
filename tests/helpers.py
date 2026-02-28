@@ -2,14 +2,13 @@
 
 import subprocess
 
-import pysam
-
 
 def bgzip_and_index(vcf_path):
     """Bgzip and tabix-index a plain VCF file. Returns .vcf.gz path."""
     gz_path = str(vcf_path) + ".gz"
-    pysam.tabix_compress(str(vcf_path), gz_path, force=True)
-    pysam.tabix_index(gz_path, preset="vcf", force=True)
+    with open(gz_path, "wb") as out:
+        subprocess.run(["bgzip", "-c", str(vcf_path)], stdout=out, check=True)
+    subprocess.run(["tabix", "-p", "vcf", gz_path], check=True)
     return gz_path
 
 
