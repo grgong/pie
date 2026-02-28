@@ -1,11 +1,4 @@
-import pytest
-from click.testing import CliRunner
 from pie.cli import main
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 class TestRunCommand:
