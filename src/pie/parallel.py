@@ -101,12 +101,22 @@ def run_parallel(
         )
     missing = gene_contigs - vcf_contigs
     if missing:
+        n_before = len(genes)
+        genes = [g for g in genes if g.chrom in shared]
         log.warning(
-            "%d of %d annotation contig(s) absent from VCF: %s",
+            "%d of %d annotation contig(s) absent from VCF (%s); "
+            "dropped %d genes on those contigs (%d genes remaining)",
             len(missing), len(gene_contigs),
             ", ".join(sorted(missing)[:10])
             + (" ..." if len(missing) > 10 else ""),
+            n_before - len(genes), len(genes),
         )
+        if not genes:
+            raise ValueError(
+                f"All {n_before} genes are on contigs absent from the VCF. "
+                f"Annotation contigs: {sorted(gene_contigs)[:5]}; "
+                f"VCF contigs: {sorted(vcf_contigs)[:5]}."
+            )
 
     init_args = (fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,

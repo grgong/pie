@@ -255,7 +255,7 @@ piS, piN_piS.
 ### `summary.tsv`
 
 Single-row genome-wide summary: total_genes, total_codons,
-total_variants, genome_piN, genome_piS, genome_piN_piS,
+cds_snp_variants, genome_piN, genome_piS, genome_piN_piS,
 mean_gene_piN, mean_gene_piS, median_gene_piN, median_gene_piS.
 In individual mode, two additional columns are included:
 n_samples_selected and mean_call_rate (variant-site-weighted average).
