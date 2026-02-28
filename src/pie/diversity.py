@@ -38,6 +38,7 @@ class VariantReaderLike(Protocol):
 _BASE_TO_IDX = {"A": 0, "C": 1, "G": 2, "T": 3}
 _IDX_TO_BASE = "ACGT"
 _COMPLEMENT_BASE = {"A": "T", "T": "A", "C": "G", "G": "C"}
+_VALID_CODON_BASES = frozenset("ACGT")
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +123,12 @@ def build_allele_freq_array(
     # Initialize with reference alleles at frequency 1.0
     for i, codon in enumerate(codons):
         for j, base in enumerate(codon):
-            freq[i, j, _BASE_TO_IDX[base]] = 1.0
+            idx = _BASE_TO_IDX.get(base)
+            if idx is None:
+                # Non-ACGT base (e.g. N) — leave row as zeros; upstream
+                # should have filtered this codon, but guard defensively.
+                break
+            freq[i, j, idx] = 1.0
 
     if not variants:
         return freq
@@ -273,6 +279,31 @@ def compute_gene_diversity(
     # Extract codons and genomic positions
     codons = ref.extract_codons(gene.cds_exons, gene.strand)
     positions = ref.codon_genomic_positions(gene.cds_exons, gene.strand)
+
+    # Filter out codons containing non-ACGT bases (e.g. N in reference)
+    n_skipped = 0
+    if any(base not in _VALID_CODON_BASES for codon in codons for base in codon):
+        clean = [(c, p) for c, p in zip(codons, positions)
+                 if all(b in _VALID_CODON_BASES for b in c)]
+        n_skipped = len(codons) - len(clean)
+        if clean:
+            codons, positions = zip(*clean)
+            codons = list(codons)
+            positions = list(positions)
+        else:
+            codons, positions = [], []
+        log.debug("Gene %s: skipped %d codon(s) with ambiguous bases",
+                  gene.gene_id, n_skipped)
+
+    # Early return when no valid codons remain (all bases ambiguous)
+    if not codons:
+        return GeneResult(
+            gene_id=gene.gene_id, transcript_id=gene.transcript_id,
+            chrom=gene.chrom, start=gene.start, end=gene.end,
+            strand=gene.strand, n_codons=0, n_poly_codons=0,
+            N_sites=0.0, S_sites=0.0, N_diffs=0.0, S_diffs=0.0,
+            mean_variant_depth=0.0, n_variants=0,
+        )
 
     # Fetch all variants across CDS exons
     all_variants: list[Variant] = []

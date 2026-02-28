@@ -79,7 +79,7 @@ Detailed comparison of piN/piS values between pie (`--keep-multiallelic`) and SN
 
 - Median per-gene relative difference: piN **0.97%**, piS **0.85%**
 - 84% of genes have piN within 5%; 92% have piS within 5%
-- pie reports slightly lower values due to the Nei correction (see below)
+- pie reports slightly lower values due to the absence of Nei correction (see below)
 
 ### Sources of difference
 

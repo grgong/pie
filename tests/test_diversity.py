@@ -56,6 +56,25 @@ class TestBuildAlleleFreqArray:
         assert abs(freqs[0, 2, 2] - 0.1) < 1e-10   # G
         assert abs(freqs[0, 2, 1] - 0.05) < 1e-10   # C
 
+    def test_ambiguous_base_n_defensive_guard(self):
+        """Non-ACGT base (N) in codon: break leaves remaining positions zeroed (Issue #2).
+
+        Upstream (compute_gene_diversity) filters codons with N before calling
+        this function. The defensive guard here breaks on N, leaving the N
+        position and any subsequent positions as zeros.
+        """
+        codons = ["ATN", "AAA"]
+        positions = [("chr1", 0, 1, 2), ("chr1", 3, 4, 5)]
+        freqs = build_allele_freq_array(codons, positions, [])
+        # First codon: A and T are set, N triggers break -> pos 2 all zeros
+        assert freqs[0, 0, 0] == 1.0  # A set before break
+        assert freqs[0, 1, 3] == 1.0  # T set before break
+        assert np.all(freqs[0, 2] == 0.0)  # N position zeroed
+        # Second codon is clean
+        assert freqs[1, 0, 0] == 1.0  # A
+        assert freqs[1, 1, 0] == 1.0  # A
+        assert freqs[1, 2, 0] == 1.0  # A
+
     def test_minus_strand_complement(self):
         """On - strand, variant REF/ALT must be complemented."""
         # CDS-sense codon is "ATG", genomic positions are reversed

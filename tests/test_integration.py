@@ -10,15 +10,8 @@ Test data layout (chr1, 350 bp):
   Gene3: pos 231-311, - strand, 27 codons (26 excl. stop), 1 low-QUAL variant
 """
 
-import pytest
 import pandas as pd
-from click.testing import CliRunner
 from pie.cli import main
-
-
-@pytest.fixture
-def runner():
-    return CliRunner()
 
 
 class TestEndToEnd:

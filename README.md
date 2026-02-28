@@ -255,7 +255,7 @@ piS, piN_piS.
 ### `summary.tsv`
 
 Single-row genome-wide summary: total_genes, total_codons,
-total_variants, genome_piN, genome_piS, genome_piN_piS,
+cds_snp_variants, genome_piN, genome_piS, genome_piN_piS,
 mean_gene_piN, mean_gene_piS, median_gene_piN, median_gene_piS.
 In individual mode, two additional columns are included:
 n_samples_selected and mean_call_rate (variant-site-weighted average).
@@ -312,6 +312,51 @@ p1: {A: 0.95, C: 0.05}   p2: {G: 1.0}   p3: {T: 0.80, A: 0.20}
 Site counts are the frequency-weighted sum across codon haplotypes.
 Pairwise differences are computed for all haplotype pairs, weighted by
 `2 * freq_i * freq_j`.
+
+### Diversity estimator and sample-size correction
+
+`pie` computes per-site diversity as the population parameter:
+
+```
+π = 2p(1−p)          (biallelic)
+π = Σ_{i<j} 2·f_i·f_j  (multiallelic / codon-level)
+```
+
+SNPGenie instead applies the Nei (1987) unbiased estimator, which
+includes a finite-sample correction:
+
+```
+π = n/(n−1) · (1 − Σf_i²)
+```
+
+where *n* is the read depth at the site. The ratio between the two
+estimators is exactly (*n*−1)/*n*, producing a systematic difference of
+~1% at 93× depth.
+
+**Why `pie` does not apply this correction.** In pool-seq, two layers
+of sampling exist:
+
+1. **Pool composition** — a finite number of individuals (2*N*
+   chromosomes) is drawn from the population.
+2. **Sequencing** — reads are drawn from the pooled DNA at depth *n*.
+
+The Nei (1987) correction was designed for *n* = number of sampled gene
+copies (chromosomes), not sequencing reads. SNPGenie substitutes read
+depth for chromosome count, which corrects only the sequencing-sampling
+layer and conflates it with the biological-sampling layer. A complete
+unbiased estimator would require correcting for both levels
+(Futschik & Schlötterer 2010):
+
+```
+π̂ = 2·p̂·(1−p̂) · n/(n−1) · 2N/(2N−1)
+```
+
+Since the pool size is rarely known with precision and the correction is
+negligible at typical pool-seq depths (>50×), `pie` reports the plug-in
+estimator directly. This is transparent — no implicit assumption about
+sample size — and has no effect on piN/piS ratios or between-group
+comparisons, where the systematic bias cancels. For a quantitative
+concordance analysis, see [benchmark/](benchmark/).
 
 ### Multi-step substitutions
 

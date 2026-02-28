@@ -116,6 +116,7 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
     """
     from pie.vcf import ensure_indexed, get_sample_names
     from pie.parallel import run_parallel
+    from pie.annotation import NoGenesFoundError
     from pie.io import write_gene_results, write_window_results, write_summary
 
     # --- Normalize mode ---
@@ -252,14 +253,18 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
 
     # Run analysis
     log.info("Starting piN/piS analysis with %d thread(s) in %s mode", threads, mode)
-    results = run_parallel(
-        fasta_path=fasta, gff_path=gff, vcf_path=vcf,
-        min_freq=min_freq, min_depth=min_depth, min_qual=min_qual,
-        pass_only=pass_only, keep_multiallelic=keep_multiallelic,
-        exclude_stops=not include_stop_codons, threads=threads,
-        sample=sample, mode=mode, samples=selected_samples,
-        min_call_rate=min_call_rate, min_an=min_an,
-    )
+    try:
+        results = run_parallel(
+            fasta_path=fasta, gff_path=gff, vcf_path=vcf,
+            min_freq=min_freq, min_depth=min_depth, min_qual=min_qual,
+            pass_only=pass_only, keep_multiallelic=keep_multiallelic,
+            exclude_stops=not include_stop_codons, threads=threads,
+            sample=sample, mode=mode, samples=selected_samples,
+            min_call_rate=min_call_rate, min_an=min_an,
+        )
+    except (NoGenesFoundError, ValueError) as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
     log.info("Processed %d genes", len(results))
 
     # Write outputs (prefix with sample name when --sample is given)
