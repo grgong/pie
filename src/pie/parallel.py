@@ -1,5 +1,6 @@
 """Gene-level multiprocessing for parallel piN/piS computation."""
 
+import atexit
 import logging
 from multiprocessing import Pool
 
@@ -34,6 +35,8 @@ def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
             keep_multiallelic=keep_multiallelic, sample=sample,
         )
         _n_samples = None
+
+    atexit.register(_worker_cleanup)
 
 
 def _worker_cleanup():
