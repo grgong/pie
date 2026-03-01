@@ -26,3 +26,5 @@ benchmark/snpgenie_input/
 benchmark/snpgenie_work/
 benchmark/slurm-*
 
+# Git worktrees
+.worktrees/
