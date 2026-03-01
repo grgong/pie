@@ -58,6 +58,7 @@ def main():
 @click.option("-W", "--window-step", default=100, show_default=True, type=click.IntRange(min=1),
               help="Sliding window step in bp.")
 @click.option("-t", "--threads", default=1, show_default=True, help="Number of parallel threads.")
+@click.option("--quiet", is_flag=True, help="Suppress per-gene warnings; show only summary counts.")
 @click.option("-s", "--sample", default=None,
               help="Sample name to analyse.  [pool mode only, for multi-sample VCFs]")
 @click.option("-S", "--samples", default=None,
@@ -70,8 +71,8 @@ def main():
               help="Minimum allele number (AN).  [individual mode only, default: 2]")
 def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
         pass_only, keep_multiallelic, include_stop_codons, window_size,
-        window_step, threads, sample, samples, samples_file, min_call_rate,
-        min_an):
+        window_step, threads, quiet, sample, samples, samples_file,
+        min_call_rate, min_an):
     """Run piN/piS analysis.
 
     \b
@@ -118,6 +119,9 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
     from pie.parallel import run_parallel
     from pie.annotation import NoGenesFoundError
     from pie.io import write_gene_results, write_window_results, write_summary
+
+    if quiet:
+        logging.getLogger("pie").setLevel(logging.WARNING)
 
     # --- Normalize mode ---
     if mode == "ind":

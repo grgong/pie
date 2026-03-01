@@ -74,6 +74,7 @@ class GeneResult:
     S_diffs: float
     mean_variant_depth: float
     n_variants: int
+    n_stop_codons: int = 0
     codon_results: list[CodonResult] = field(default_factory=list)
     n_samples: int | None = None
     call_rates: list[float] | None = None
@@ -404,7 +405,7 @@ def compute_gene_diversity(
         total_S_diffs += cr.S_diffs
 
     if n_stop_warn > 0:
-        log.warning(
+        log.debug(
             "Gene %s: %d polymorphic codon(s) had stop-codon frequency > 1%%; "
             "stops removed and renormalized",
             gene.gene_id, n_stop_warn,
@@ -434,6 +435,7 @@ def compute_gene_diversity(
         S_diffs=total_S_diffs,
         mean_variant_depth=mean_variant_depth,
         n_variants=len(all_variants),
+        n_stop_codons=n_stop_warn,
         codon_results=codon_results,
         call_rates=cr_list if cr_list else None,
     )

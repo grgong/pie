@@ -2,6 +2,7 @@
 
 import atexit
 import logging
+import warnings
 from multiprocessing import Pool
 
 from pie.annotation import GeneModel, NoGenesFoundError, parse_annotations
@@ -16,6 +17,9 @@ def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,
                  mode, samples, min_call_rate, min_an):
     """Initialize per-worker file handles (stored in globals)."""
+    # Suppress noisy cyvcf2/htslib "no intervals found" warnings that fire
+    # for every empty-region tabix query (tens per run, no diagnostic value).
+    warnings.filterwarnings("ignore", message="no intervals found")
     global _ref, _vcf, _exclude_stops, _n_samples
     _ref = ReferenceGenome(fasta_path)
     _exclude_stops = exclude_stops
@@ -136,6 +140,17 @@ def run_parallel(
             initargs=init_args,
         ) as pool:
             results = pool.map(_process_gene, genes)
+
+    # Summarize stop-codon renormalization across all genes (replaces
+    # per-gene warnings that previously flooded logs — issue #13).
+    n_stop_genes = sum(1 for r in results if r.n_stop_codons > 0)
+    if n_stop_genes > 0:
+        total_stop_codons = sum(r.n_stop_codons for r in results)
+        log.info(
+            "Stop-codon renormalization applied to %d/%d genes "
+            "(%d polymorphic codons total)",
+            n_stop_genes, len(results), total_stop_codons,
+        )
 
     results.sort(key=lambda r: (r.chrom, r.start))
     return results
