@@ -122,11 +122,11 @@ class TestRealDataRegression:
 
         assert g["n_codons"] == 619
         assert g["n_variants"] == 41
-        assert abs(g["N_sites"] - 1421.654100) < 1e-4
-        assert abs(g["S_sites"] - 435.345900) < 1e-4
-        assert abs(g["piN"] - 0.006868) < 1e-5
-        assert abs(g["piS"] - 0.014170) < 1e-5
-        assert abs(g["piN_piS"] - 0.484712) < 1e-4
+        assert abs(g["N_sites"] - 1420.987433) < 1e-4
+        assert abs(g["S_sites"] - 436.012567) < 1e-4
+        assert abs(g["piN"] - 0.006871) < 1e-5
+        assert abs(g["piS"] - 0.014148) < 1e-5
+        assert abs(g["piN_piS"] - 0.485682) < 1e-4
 
     def test_multiallelic_gene_apisum_003665(self, real_results):
         """Pin Apisum_003665 (default: multiallelic sites skipped, - strand)."""
@@ -135,11 +135,11 @@ class TestRealDataRegression:
 
         assert g["n_codons"] == 215
         assert g["n_variants"] == 18
-        assert abs(g["N_sites"] - 495.546269) < 1e-4
-        assert abs(g["S_sites"] - 149.453731) < 1e-4
-        assert abs(g["piN"] - 0.007547) < 1e-5
-        assert abs(g["piS"] - 0.013266) < 1e-5
-        assert abs(g["piN_piS"] - 0.568877) < 1e-4
+        assert abs(g["N_sites"] - 494.879603) < 1e-4
+        assert abs(g["S_sites"] - 150.120397) < 1e-4
+        assert abs(g["piN"] - 0.007557) < 1e-5
+        assert abs(g["piS"] - 0.013207) < 1e-5
+        assert abs(g["piN_piS"] - 0.572184) < 1e-4
 
     def test_high_variant_gene(self, real_results):
         """Pin Apisum_003662 (default: multiallelic sites skipped)."""
@@ -186,11 +186,11 @@ class TestRealDataKeepMultiallelic:
 
         assert g["n_codons"] == 619
         assert g["n_variants"] == 45
-        assert abs(g["N_sites"] - 1421.634246) < 1e-4
-        assert abs(g["S_sites"] - 435.365754) < 1e-4
-        assert abs(g["piN"] - 0.007146) < 1e-5
-        assert abs(g["piS"] - 0.014169) < 1e-5
-        assert abs(g["piN_piS"] - 0.504338) < 1e-4
+        assert abs(g["N_sites"] - 1420.300912) < 1e-4
+        assert abs(g["S_sites"] - 436.699088) < 1e-4
+        assert abs(g["piN"] - 0.007153) < 1e-5
+        assert abs(g["piS"] - 0.014126) < 1e-5
+        assert abs(g["piN_piS"] - 0.506357) < 1e-4
 
     def test_multiallelic_gene_apisum_003665_keep(self, real_results_keep_multiallelic):
         """Pin Apisum_003665 with --keep-multiallelic (- strand)."""
@@ -199,11 +199,11 @@ class TestRealDataKeepMultiallelic:
 
         assert g["n_codons"] == 215
         assert g["n_variants"] == 22
-        assert abs(g["N_sites"] - 495.546269) < 1e-4
-        assert abs(g["S_sites"] - 149.453731) < 1e-4
-        assert abs(g["piN"] - 0.008552) < 1e-5
-        assert abs(g["piS"] - 0.017477) < 1e-5
-        assert abs(g["piN_piS"] - 0.489328) < 1e-4
+        assert abs(g["N_sites"] - 494.879603) < 1e-4
+        assert abs(g["S_sites"] - 150.120397) < 1e-4
+        assert abs(g["piN"] - 0.008564) < 1e-5
+        assert abs(g["piS"] - 0.017400) < 1e-5
+        assert abs(g["piN_piS"] - 0.492173) < 1e-4
 
     def test_high_variant_gene_keep(self, real_results_keep_multiallelic):
         """Pin Apisum_003662 with --keep-multiallelic."""
@@ -213,9 +213,9 @@ class TestRealDataKeepMultiallelic:
         assert g["n_codons"] == 418
         assert g["n_variants"] == 93
         assert g["n_poly_codons"] == 77
-        assert abs(g["piN"] - 0.014266) < 1e-5
-        assert abs(g["piS"] - 0.013886) < 1e-5
-        assert abs(g["piN_piS"] - 1.027330) < 1e-4
+        assert abs(g["piN"] - 0.014251) < 1e-5
+        assert abs(g["piS"] - 0.013936) < 1e-5
+        assert abs(g["piN_piS"] - 1.022581) < 1e-4
 
     def test_more_variants_with_keep_multiallelic(self, real_results, real_results_keep_multiallelic):
         """--keep-multiallelic should have >= variants than default for affected genes."""

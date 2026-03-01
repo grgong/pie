@@ -1,8 +1,9 @@
 """Tests for the core piN/piS diversity engine."""
 
 import numpy as np
-from pie.codon import codon_to_index, N_SITES, S_SITES
+from pie.codon import codon_to_index, N_SITES, S_SITES, CODON_TO_INDEX
 from pie.diversity import (
+    _monomorphic_codon_index,
     build_allele_freq_array,
     compute_codon_diversity,
     compute_gene_diversity,
@@ -306,3 +307,128 @@ class TestComputeGeneDiversity:
             assert cr.N_sites >= 0
             assert cr.S_sites >= 0
             assert isinstance(cr, CodonResult)
+
+
+class TestMonomorphicCodonIndex:
+    """Tests for _monomorphic_codon_index helper."""
+
+    def test_reference_codon(self):
+        """Reference-only codon returns the correct index."""
+        freq = np.zeros((3, 4))
+        freq[0, 0] = 1.0  # A
+        freq[1, 0] = 1.0  # A
+        freq[2, 0] = 1.0  # A -> AAA
+        assert _monomorphic_codon_index(freq) == CODON_TO_INDEX["AAA"]
+
+    def test_fixed_alt_codon(self):
+        """Fixed alternate allele returns the derived codon index."""
+        freq = np.zeros((3, 4))
+        freq[0, 3] = 1.0  # T (was A in ref)
+        freq[1, 0] = 1.0  # A
+        freq[2, 0] = 1.0  # A -> TAA
+        assert _monomorphic_codon_index(freq) == CODON_TO_INDEX["TAA"]
+
+    def test_all_zeros_returns_none(self):
+        """All-zero position returns None."""
+        freq = np.zeros((3, 4))
+        freq[0, 0] = 1.0
+        freq[1, 0] = 1.0
+        # pos 2 all zeros
+        assert _monomorphic_codon_index(freq) is None
+
+    def test_polymorphic_returns_none(self):
+        """Polymorphic position (2 alleles) returns None."""
+        freq = np.zeros((3, 4))
+        freq[0, 0] = 0.8
+        freq[0, 3] = 0.2  # two alleles at pos 0
+        freq[1, 0] = 1.0
+        freq[2, 0] = 1.0
+        assert _monomorphic_codon_index(freq) is None
+
+
+class TestFixedAltMonomorphicSiteCounts:
+    """Regression tests for issue #4: fixed non-reference monomorphic sites
+    must use the derived codon for N_sites/S_sites, not the reference codon."""
+
+    def test_fixed_alt_uses_derived_site_counts(self):
+        """A codon fixed for ALT should get site counts from the derived codon,
+        not the reference codon."""
+        # Reference: AAA (Lys, N_sites=2.6667)
+        # Fixed derived: ACA (Thr, N_sites=2.0000) — pos 1 A->C
+        codons = ["AAA"]  # reference codon from FASTA
+        positions = [("chr1", 0, 1, 2)]
+        variants = [Variant(pos=1, ref="A", alt="C", freq=1.0, depth=100)]
+        freq_array = build_allele_freq_array(codons, positions, variants)
+
+        # Verify freq_array encodes ACA (C at pos 1)
+        assert freq_array[0, 1, 1] == 1.0  # C
+        assert freq_array[0, 1, 0] == 0.0  # A gone
+
+        # Monomorphic: poly_mask should be False
+        poly_mask = (freq_array > 0).sum(axis=2).max(axis=1) > 1
+        assert not poly_mask[0]
+
+        # The actual codon index should be ACA, not AAA
+        actual_idx = _monomorphic_codon_index(freq_array[0])
+        assert actual_idx == CODON_TO_INDEX["ACA"]
+        assert actual_idx != CODON_TO_INDEX["AAA"]
+
+        # Site counts must differ between AAA and ACA
+        ref_n = float(N_SITES[CODON_TO_INDEX["AAA"]].sum())
+        derived_n = float(N_SITES[CODON_TO_INDEX["ACA"]].sum())
+        assert abs(ref_n - derived_n) > 0.1  # delta is 0.6667
+
+    def test_reference_monomorphic_unchanged(self):
+        """Reference-only codons still use reference site counts (no regression)."""
+        codons = ["GCT"]
+        positions = [("chr1", 0, 1, 2)]
+        freq_array = build_allele_freq_array(codons, positions, [])
+
+        actual_idx = _monomorphic_codon_index(freq_array[0])
+        assert actual_idx == CODON_TO_INDEX["GCT"]
+
+    def test_gene_with_fixed_alt_variant(self):
+        """Integration: compute_gene_diversity uses derived codon site counts
+        for a gene with a fixed non-reference allele."""
+        from unittest.mock import MagicMock
+
+        from pie.annotation import GeneModel
+
+        # Reference: AAA GCT TAA (3 codons, last is stop)
+        # Variant: pos 1 A->C at freq=1.0 → AAA becomes ACA (Thr)
+        # AAA N_sites=2.6667 vs ACA N_sites=2.0000 (delta=0.6667)
+        gene = GeneModel(
+            gene_id="test_fixed", transcript_id="tx1",
+            chrom="chr1", start=0, end=9, strand="+",
+            cds_exons=[("chr1", 0, 9)],
+        )
+
+        ref = MagicMock()
+        ref.extract_codons.return_value = ["AAA", "GCT", "TAA"]
+        ref.codon_genomic_positions.return_value = [
+            ("chr1", 0, 1, 2), ("chr1", 3, 4, 5), ("chr1", 6, 7, 8),
+        ]
+
+        # pos 1: A->C at freq=1.0 (AAA -> ACA, fixed derived)
+        vcf = MagicMock()
+        vcf.fetch.return_value = [
+            Variant(pos=1, ref="A", alt="C", freq=1.0, depth=100),
+        ]
+
+        result = compute_gene_diversity(gene, ref, vcf)
+
+        assert result.n_codons == 2  # AAA(->ACA) + GCT, TAA skipped
+        assert result.n_poly_codons == 0
+        assert result.N_diffs == 0.0
+        assert result.S_diffs == 0.0
+
+        # First codon should have ACA site counts, not AAA
+        cr0 = result.codon_results[0]
+        expected_n = float(N_SITES[CODON_TO_INDEX["ACA"]].sum())
+        expected_s = float(S_SITES[CODON_TO_INDEX["ACA"]].sum())
+        assert abs(cr0.N_sites - expected_n) < 1e-10
+        assert abs(cr0.S_sites - expected_s) < 1e-10
+
+        # Confirm it's NOT the reference AAA site counts
+        ref_n = float(N_SITES[CODON_TO_INDEX["AAA"]].sum())
+        assert abs(cr0.N_sites - ref_n) > 0.1  # delta is 0.6667
