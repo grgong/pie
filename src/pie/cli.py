@@ -58,7 +58,7 @@ def main():
 @click.option("-W", "--window-step", default=100, show_default=True, type=click.IntRange(min=1),
               help="Sliding window step in bp.")
 @click.option("-t", "--threads", default=1, show_default=True, help="Number of parallel threads.")
-@click.option("--quiet", is_flag=True, help="Suppress per-gene warnings; show only summary counts.")
+@click.option("--quiet", is_flag=True, help="Suppress progress messages (show only warnings and summary).")
 @click.option("-s", "--sample", default=None,
               help="Sample name to analyse.  [pool mode only, for multi-sample VCFs]")
 @click.option("-S", "--samples", default=None,

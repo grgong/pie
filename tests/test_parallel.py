@@ -1,5 +1,6 @@
 """Tests for gene-level multiprocessing parallel runner."""
 
+import logging
 import pytest
 from pie.parallel import run_parallel
 from pie.diversity import GeneResult
@@ -44,3 +45,23 @@ class TestRunParallel:
                                threads=1)
         gene3 = [r for r in results if "gene3" in r.gene_id.lower()][0]
         assert gene3.n_variants == 0  # QUAL=15 variant filtered
+
+    def test_stop_codon_summary_logged_once(self, ref_fasta, gff3_file, vcf_file, caplog):
+        """Stop-codon renormalization is summarized once, not per-gene."""
+        with caplog.at_level(logging.WARNING, logger="pie.parallel"):
+            results = run_parallel(ref_fasta, gff3_file, vcf_file,
+                                   min_freq=0.0, min_depth=0, min_qual=0,
+                                   threads=1)
+        stop_msgs = [r for r in caplog.records
+                     if "Stop-codon renormalization" in r.message]
+        # Either 0 (no genes had stop codons) or exactly 1 summary line
+        assert len(stop_msgs) <= 1
+
+    def test_n_stop_codons_on_results(self, ref_fasta, gff3_file, vcf_file):
+        """GeneResult carries n_stop_codons field."""
+        results = run_parallel(ref_fasta, gff3_file, vcf_file,
+                               min_freq=0.0, min_depth=0, min_qual=0,
+                               threads=1)
+        for r in results:
+            assert hasattr(r, "n_stop_codons")
+            assert r.n_stop_codons >= 0

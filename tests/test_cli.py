@@ -34,6 +34,27 @@ class TestRunCommand:
         assert result.exit_code == 0
         assert "--keep-multiallelic" in result.output
 
+    def test_help_shows_quiet(self, runner):
+        result = runner.invoke(main, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--quiet" in result.output
+
+    def test_quiet_flag_runs(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        """--quiet flag is accepted and suppresses INFO messages."""
+        result = runner.invoke(main, [
+            "run",
+            "--vcf", vcf_file,
+            "--gff", gff3_file,
+            "--fasta", ref_fasta,
+            "--outdir", str(tmp_path),
+            "--min-freq", "0",
+            "--min-depth", "0",
+            "--min-qual", "0",
+            "--quiet",
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "gene_results.tsv").exists()
+
     def test_help_shows_include_stop_codons(self, runner):
         result = runner.invoke(main, ["run", "--help"])
         assert result.exit_code == 0

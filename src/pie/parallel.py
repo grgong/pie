@@ -19,7 +19,8 @@ def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
     """Initialize per-worker file handles (stored in globals)."""
     # Suppress noisy cyvcf2/htslib "no intervals found" warnings that fire
     # for every empty-region tabix query (tens per run, no diagnostic value).
-    warnings.filterwarnings("ignore", message="no intervals found")
+    warnings.filterwarnings("ignore", message="no intervals found",
+                            category=UserWarning)
     global _ref, _vcf, _exclude_stops, _n_samples
     _ref = ReferenceGenome(fasta_path)
     _exclude_stops = exclude_stops
@@ -146,7 +147,7 @@ def run_parallel(
     n_stop_genes = sum(1 for r in results if r.n_stop_codons > 0)
     if n_stop_genes > 0:
         total_stop_codons = sum(r.n_stop_codons for r in results)
-        log.info(
+        log.warning(
             "Stop-codon renormalization applied to %d/%d genes "
             "(%d polymorphic codons total)",
             n_stop_genes, len(results), total_stop_codons,
