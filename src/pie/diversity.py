@@ -254,6 +254,25 @@ def compute_codon_diversity(freq: np.ndarray, exclude_stops: bool = False) -> di
     }
 
 
+def _monomorphic_codon_index(freq: np.ndarray) -> int | None:
+    """Return the CODON_TO_INDEX for the actual codon encoded in *freq*.
+
+    For a monomorphic codon each position has exactly one allele with
+    frequency > 0.  This function reads those alleles and returns the
+    codon index, which may differ from the reference when the population
+    is fixed for an alternate allele.
+
+    Returns None if any position has no allele with freq > 0.
+    """
+    bases = []
+    for pos in range(3):
+        nonzero = np.nonzero(freq[pos])[0]
+        if len(nonzero) != 1:
+            return None
+        bases.append(_IDX_TO_BASE[nonzero[0]])
+    return CODON_TO_INDEX.get("".join(bases))
+
+
 # ---------------------------------------------------------------------------
 # 3. Compute diversity for a whole gene
 # ---------------------------------------------------------------------------
@@ -357,10 +376,15 @@ def compute_gene_diversity(
                 S_diffs=result["S_diffs"],
             )
         else:
-            # Monomorphic: only site counts, diffs = 0
-            if idx is not None:
-                n_s = float(n_sites_tbl[idx].sum())
-                s_s = float(s_sites_tbl[idx].sum())
+            # Monomorphic: only site counts, diffs = 0.
+            # Derive the actual codon from freq_array (may differ from
+            # reference when the population is fixed for an alternate allele).
+            actual_idx = _monomorphic_codon_index(freq_array[i])
+            if actual_idx is None:
+                actual_idx = idx  # fall back to reference
+            if actual_idx is not None:
+                n_s = float(n_sites_tbl[actual_idx].sum())
+                s_s = float(s_sites_tbl[actual_idx].sum())
             else:
                 n_s = 0.0
                 s_s = 0.0
