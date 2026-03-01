@@ -140,6 +140,8 @@ def write_summary(results: list[GeneResult], path: str) -> None:
         "mean_gene_piS": float(np.mean(gene_piSs)) if gene_piSs else 0.0,
         "median_gene_piN": float(np.median(gene_piNs)) if gene_piNs else 0.0,
         "median_gene_piS": float(np.median(gene_piSs)) if gene_piSs else 0.0,
+        "stop_renorm_genes": sum(1 for r in results if r.n_stop_codons > 0),
+        "stop_renorm_codons": sum(r.n_stop_codons for r in results),
     }
     if ind_mode:
         row["n_samples_selected"] = results[0].n_samples if results else 0

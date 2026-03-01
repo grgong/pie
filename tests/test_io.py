@@ -129,3 +129,37 @@ class TestWriteSummary:
         # genome_piN = (0.42 + 0.48) / (59.6667 + 65.6667)
         expected_piN = 0.9 / 125.3334
         assert abs(df.iloc[0]["genome_piN"] - expected_piN) < 1e-6
+
+    def test_stop_renorm_columns_no_stops(self, sample_results, tmp_path):
+        """No stop-codon renormalization -> both columns are 0."""
+        outpath = tmp_path / "summary.tsv"
+        write_summary(sample_results, str(outpath))
+        df = pd.read_csv(outpath, sep="\t")
+        assert df.iloc[0]["stop_renorm_genes"] == 0
+        assert df.iloc[0]["stop_renorm_codons"] == 0
+
+    def test_stop_renorm_columns_with_stops(self, tmp_path):
+        """Genes with n_stop_codons > 0 are counted correctly."""
+        r1 = GeneResult(
+            gene_id="g1", transcript_id="tx1", chrom="chr1",
+            start=0, end=90, strand="+", n_codons=30, n_poly_codons=2,
+            N_sites=60.0, S_sites=27.0, N_diffs=0.4, S_diffs=0.3,
+            mean_variant_depth=100.0, n_variants=2, n_stop_codons=3,
+        )
+        r2 = GeneResult(
+            gene_id="g2", transcript_id="tx2", chrom="chr1",
+            start=100, end=190, strand="+", n_codons=30, n_poly_codons=1,
+            N_sites=60.0, S_sites=27.0, N_diffs=0.5, S_diffs=0.0,
+            mean_variant_depth=100.0, n_variants=1, n_stop_codons=0,
+        )
+        r3 = GeneResult(
+            gene_id="g3", transcript_id="tx3", chrom="chr1",
+            start=200, end=290, strand="+", n_codons=30, n_poly_codons=1,
+            N_sites=60.0, S_sites=27.0, N_diffs=0.2, S_diffs=0.1,
+            mean_variant_depth=100.0, n_variants=1, n_stop_codons=1,
+        )
+        outpath = tmp_path / "summary.tsv"
+        write_summary([r1, r2, r3], str(outpath))
+        df = pd.read_csv(outpath, sep="\t")
+        assert df.iloc[0]["stop_renorm_genes"] == 2   # g1 and g3
+        assert df.iloc[0]["stop_renorm_codons"] == 4   # 3 + 0 + 1
