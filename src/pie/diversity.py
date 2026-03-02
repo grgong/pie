@@ -350,12 +350,15 @@ def compute_gene_diversity(
     n_codons_analyzed = 0
     n_poly = 0
     n_stop_warn = 0  # count codons with stop freq > 1%
+    n_internal_stops = 0  # count internal (non-terminal) stop codons
     codon_results: list[CodonResult] = []
 
     for i, codon_str in enumerate(codons):
-        # Skip terminal stop codons (always, regardless of mode)
+        # Skip stop codons (always, regardless of mode)
         idx = CODON_TO_INDEX.get(codon_str)
         if idx is not None and is_stop_codon(idx):
+            if i < len(codons) - 1:
+                n_internal_stops += 1
             continue
 
         chrom = positions[i][0]
@@ -404,6 +407,12 @@ def compute_gene_diversity(
         total_N_diffs += cr.N_diffs
         total_S_diffs += cr.S_diffs
 
+    if n_internal_stops > 0:
+        log.warning(
+            "Gene %s: %d internal stop codon(s) in reference — "
+            "possible pseudogene or annotation issue",
+            gene.gene_id, n_internal_stops,
+        )
     if n_stop_warn > 0:
         log.debug(
             "Gene %s: %d polymorphic codon(s) had stop-codon frequency > 1%%; "
