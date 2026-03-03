@@ -18,6 +18,7 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
         piN = r.piN
         piS = r.piS
         piN_piS = r.piN_piS  # None when piS == 0
+        fs = r.filter_stats
         row = {
             "chrom": r.chrom,
             "gene_id": r.gene_id,
@@ -36,10 +37,20 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
             "piN_piS": piN_piS,
             "mean_variant_depth": r.mean_variant_depth,
             "n_variants": r.n_variants,
+            # QC columns
+            "n_ambiguous_codons": r.n_ambiguous_codons,
+            "n_internal_stop_codons": r.n_internal_stop_codons,
+            "n_vcf_records": fs.n_total,
+            "n_filtered_qual": fs.n_filtered_qual,
+            "n_filtered_depth": fs.n_filtered_depth,
+            "n_filtered_freq": fs.n_filtered_freq,
+            "n_filtered_multiallelic": fs.n_filtered_multiallelic,
+            "n_filtered_not_snp": fs.n_filtered_not_snp,
         }
         if ind_mode:
             row["n_samples"] = r.n_samples
             row["mean_call_rate"] = r.mean_call_rate
+            row["n_filtered_call_rate"] = fs.n_filtered_call_rate
         rows.append(row)
     df = pd.DataFrame(rows)
     df.to_csv(path, sep="\t", index=False)
@@ -129,6 +140,17 @@ def write_summary(results: list[GeneResult], path: str) -> None:
 
     ind_mode = any(r.n_samples is not None for r in results)
 
+    total_vcf_records = sum(r.filter_stats.n_total for r in results)
+    total_filtered_qual = sum(r.filter_stats.n_filtered_qual for r in results)
+    total_filtered_depth = sum(r.filter_stats.n_filtered_depth for r in results)
+    total_filtered_freq = sum(r.filter_stats.n_filtered_freq for r in results)
+    total_filtered_multiallelic = sum(
+        r.filter_stats.n_filtered_multiallelic for r in results)
+    total_filtered_not_snp = sum(
+        r.filter_stats.n_filtered_not_snp for r in results)
+    total_ambiguous_codons = sum(r.n_ambiguous_codons for r in results)
+    total_internal_stop_codons = sum(r.n_internal_stop_codons for r in results)
+
     row = {
         "total_genes": total_genes,
         "total_codons": total_codons,
@@ -142,6 +164,15 @@ def write_summary(results: list[GeneResult], path: str) -> None:
         "median_gene_piS": float(np.median(gene_piSs)) if gene_piSs else 0.0,
         "stop_renorm_genes": sum(1 for r in results if r.n_stop_codons > 0),
         "stop_renorm_codons": sum(r.n_stop_codons for r in results),
+        # QC totals
+        "total_vcf_records": total_vcf_records,
+        "total_ambiguous_codons": total_ambiguous_codons,
+        "total_internal_stop_codons": total_internal_stop_codons,
+        "total_filtered_qual": total_filtered_qual,
+        "total_filtered_depth": total_filtered_depth,
+        "total_filtered_freq": total_filtered_freq,
+        "total_filtered_multiallelic": total_filtered_multiallelic,
+        "total_filtered_not_snp": total_filtered_not_snp,
     }
     if ind_mode:
         row["n_samples_selected"] = results[0].n_samples if results else 0
@@ -152,5 +183,7 @@ def write_summary(results: list[GeneResult], path: str) -> None:
         row["mean_call_rate"] = (
             sum(all_call_rates) / len(all_call_rates) if all_call_rates else 0.0
         )
+        row["total_filtered_call_rate"] = sum(
+            r.filter_stats.n_filtered_call_rate for r in results)
     df = pd.DataFrame([row])
     df.to_csv(path, sep="\t", index=False)

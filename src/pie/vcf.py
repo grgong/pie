@@ -58,6 +58,41 @@ class Variant:
     call_rate: float | None = None  # fraction of called samples (individual mode only)
 
 
+@dataclass(slots=True)
+class FilterStats:
+    """Counts of VCF records/positions filtered at each stage of fetch()."""
+
+    n_total: int = 0
+    n_filtered_qual: int = 0
+    n_filtered_pass: int = 0
+    n_filtered_not_snp: int = 0
+    n_filtered_depth: int = 0
+    n_filtered_freq: int = 0
+    n_filtered_multiallelic: int = 0
+    n_filtered_call_rate: int = 0
+    n_filtered_an: int = 0
+
+    def __iadd__(self, other: "FilterStats") -> "FilterStats":
+        self.n_total += other.n_total
+        self.n_filtered_qual += other.n_filtered_qual
+        self.n_filtered_pass += other.n_filtered_pass
+        self.n_filtered_not_snp += other.n_filtered_not_snp
+        self.n_filtered_depth += other.n_filtered_depth
+        self.n_filtered_freq += other.n_filtered_freq
+        self.n_filtered_multiallelic += other.n_filtered_multiallelic
+        self.n_filtered_call_rate += other.n_filtered_call_rate
+        self.n_filtered_an += other.n_filtered_an
+        return self
+
+
+@dataclass(slots=True)
+class FetchResult:
+    """Result of a fetch() call: variants that passed filters plus statistics."""
+
+    variants: list[Variant]
+    stats: FilterStats
+
+
 def ensure_indexed(vcf_path: str) -> str:
     """Ensure VCF is bgzipped and tabix-indexed. Returns path to .vcf.gz."""
     need_index = False
@@ -108,7 +143,7 @@ class VariantReader(_BaseVariantReader):
             self._vcf = VCF(vcf_path)
         self._init_contig_tracking()
 
-    def fetch(self, chrom: str, start: int, end: int) -> list[Variant]:
+    def fetch(self, chrom: str, start: int, end: int) -> FetchResult:
         """Fetch filtered variants in region (0-based, half-open).
 
         Handles both single-line multiallelic records (``ALT=C,G``) and
@@ -116,9 +151,13 @@ class VariantReader(_BaseVariantReader):
         positions with multiple ALT alleles are skipped; set
         ``keep_multiallelic=True`` to merge them instead (frequencies
         recomputed from raw allele depths).
+
+        Returns a FetchResult containing the passing variants and per-filter
+        counts for QC reporting.
         """
+        stats = FilterStats()
         if not self._check_contig(chrom):
-            return []
+            return FetchResult([], stats)
 
         region = f"{chrom}:{start + 1}-{end}"
 
@@ -130,12 +169,16 @@ class VariantReader(_BaseVariantReader):
         multiallelic_pos: set[int] = set()
         seen_pos: dict[int, int] = {}  # pos -> count of valid SNP alleles
         for record in self._vcf(region):
+            stats.n_total += 1
             if self._pass_only and record.FILTER is not None:
+                stats.n_filtered_pass += 1
                 continue
             if record.QUAL is not None and record.QUAL < self._min_qual:
+                stats.n_filtered_qual += 1
                 continue
             # REF must be a single valid nucleotide for a SNP
             if record.REF not in _VALID_BASES:
+                stats.n_filtered_not_snp += 1
                 continue
 
             pos0 = record.POS - 1
@@ -149,6 +192,7 @@ class VariantReader(_BaseVariantReader):
                 # Per-allele SNP check: single valid nucleotide
                 if alt_allele not in _VALID_BASES:
                     self._n_star_alleles += 1
+                    stats.n_filtered_not_snp += 1
                     continue
                 depth, freq, ref_count, alt_count = (
                     self._extract_freq_depth(record, alt_idx))
@@ -161,7 +205,7 @@ class VariantReader(_BaseVariantReader):
                 ))
 
         if not raw:
-            return []
+            return FetchResult([], stats)
 
         # Group by position to merge multiallelic decomposed records
         by_pos: dict[int, list[tuple]] = {}
@@ -174,12 +218,17 @@ class VariantReader(_BaseVariantReader):
             is_multiallelic = pos in multiallelic_pos
             if not is_multiallelic:
                 p, ref, alt, freq, depth, _, _ = group[0]
-                if depth < self._min_depth or freq < self._min_freq:
+                if depth < self._min_depth:
+                    stats.n_filtered_depth += 1
+                    continue
+                if freq < self._min_freq:
+                    stats.n_filtered_freq += 1
                     continue
                 variants.append(Variant(
                     pos=p, ref=ref, alt=alt, freq=freq, depth=depth))
             elif not self._keep_multiallelic:
                 # Skip multiallelic sites by default
+                stats.n_filtered_multiallelic += 1
                 continue
             else:
                 # Merge: recompute frequencies using ALL allele depths
@@ -190,6 +239,7 @@ class VariantReader(_BaseVariantReader):
                     total_alt = sum(r[6] for r in group)
                     total_depth = ref_count + total_alt
                     if total_depth < self._min_depth:
+                        stats.n_filtered_depth += 1
                         continue
                     for r in group:
                         new_freq = (r[6] / total_depth
@@ -198,16 +248,22 @@ class VariantReader(_BaseVariantReader):
                             variants.append(Variant(
                                 pos=r[0], ref=r[1], alt=r[2],
                                 freq=new_freq, depth=total_depth))
+                        else:
+                            stats.n_filtered_freq += 1
                 else:
                     # No raw allele depths available — keep original frequencies
                     for r in group:
-                        if r[4] < self._min_depth or r[3] < self._min_freq:
+                        if r[4] < self._min_depth:
+                            stats.n_filtered_depth += 1
+                            continue
+                        if r[3] < self._min_freq:
+                            stats.n_filtered_freq += 1
                             continue
                         variants.append(Variant(
                             pos=r[0], ref=r[1], alt=r[2],
                             freq=r[3], depth=r[4]))
 
-        return variants
+        return FetchResult(variants, stats)
 
     def _extract_freq_depth(
         self, record, alt_index: int = 0,
@@ -287,7 +343,7 @@ class IndividualVariantReader(_BaseVariantReader):
     def n_samples(self) -> int:
         return self._n_samples
 
-    def fetch(self, chrom: str, start: int, end: int) -> list[Variant]:
+    def fetch(self, chrom: str, start: int, end: int) -> FetchResult:
         """Fetch filtered variants in region (0-based, half-open).
 
         Per-record logic (single GT pass):
@@ -298,9 +354,13 @@ class IndividualVariantReader(_BaseVariantReader):
         3. Check call_rate >= min_call_rate and AN >= min_an
         4. For each ALT with alt_count > 0: freq = alt_count / AN
         5. Multiallelic grouping, then min_freq filter
+
+        Returns a FetchResult containing the passing variants and per-filter
+        counts for QC reporting.
         """
+        stats = FilterStats()
         if not self._check_contig(chrom):
-            return []
+            return FetchResult([], stats)
 
         region = f"{chrom}:{start + 1}-{end}"
 
@@ -310,11 +370,15 @@ class IndividualVariantReader(_BaseVariantReader):
         seen_pos: dict[int, int] = {}
 
         for record in self._vcf(region):
+            stats.n_total += 1
             if self._pass_only and record.FILTER is not None:
+                stats.n_filtered_pass += 1
                 continue
             if record.QUAL is not None and record.QUAL < self._min_qual:
+                stats.n_filtered_qual += 1
                 continue
             if record.REF not in _VALID_BASES:
+                stats.n_filtered_not_snp += 1
                 continue
 
             pos0 = record.POS - 1
@@ -343,19 +407,23 @@ class IndividualVariantReader(_BaseVariantReader):
                         alt_counts[allele - 1] += 1
 
             if called == 0:
+                stats.n_filtered_call_rate += 1
                 continue
 
             call_rate = called / self._n_samples
             if call_rate < self._min_call_rate:
+                stats.n_filtered_call_rate += 1
                 continue
 
             an = 2 * called
             if an < self._min_an:
+                stats.n_filtered_an += 1
                 continue
 
             for alt_idx, alt_allele in enumerate(record.ALT):
                 if alt_allele not in _VALID_BASES:
                     self._n_star_alleles += 1
+                    stats.n_filtered_not_snp += 1
                     continue
                 ac = alt_counts[alt_idx]
                 if ac == 0:
@@ -365,7 +433,7 @@ class IndividualVariantReader(_BaseVariantReader):
                             ref_count, ac, call_rate))
 
         if not raw:
-            return []
+            return FetchResult([], stats)
 
         # Group by position for multiallelic handling
         by_pos: dict[int, list[tuple]] = {}
@@ -379,10 +447,12 @@ class IndividualVariantReader(_BaseVariantReader):
             if not is_multiallelic:
                 p, ref, alt, freq, depth, _, _, cr = group[0]
                 if freq < self._min_freq:
+                    stats.n_filtered_freq += 1
                     continue
                 variants.append(Variant(pos=p, ref=ref, alt=alt,
                                         freq=freq, depth=depth, call_rate=cr))
             elif not self._keep_multiallelic:
+                stats.n_filtered_multiallelic += 1
                 continue
             else:
                 for r in group:
@@ -391,5 +461,7 @@ class IndividualVariantReader(_BaseVariantReader):
                         variants.append(Variant(pos=p, ref=ref, alt=alt,
                                                 freq=freq, depth=depth,
                                                 call_rate=cr))
+                    else:
+                        stats.n_filtered_freq += 1
 
-        return variants
+        return FetchResult(variants, stats)

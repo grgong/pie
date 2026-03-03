@@ -32,7 +32,7 @@ class TestMissingContigTracking:
     def test_fetch_missing_contig_returns_empty(self, vcf_file):
         """Fetching from absent contig returns [] and tracks it (Issue #7)."""
         with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as reader:
-            variants = reader.fetch("nonexistent", 0, 100)
+            variants = reader.fetch("nonexistent", 0, 100).variants
             assert variants == []
             assert "nonexistent" in reader._missing_contigs
 
@@ -43,7 +43,7 @@ class TestMissingContigTracking:
             min_freq=0.0, min_qual=0.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chrX", 0, 100)
+            variants = reader.fetch("chrX", 0, 100).variants
             assert variants == []
             assert "chrX" in reader._missing_contigs
 
@@ -56,7 +56,7 @@ class TestVariantReader:
     def test_fetch_gene1_variants(self, vcf_file):
         """Gene1 region has 2 variants: pos 5 (T->C) and pos 6 (G->A) (0-based)."""
         with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 90)
+            variants = reader.fetch("chr1", 0, 90).variants
             assert len(variants) == 2
             # Check first variant
             v1 = variants[0]
@@ -68,31 +68,31 @@ class TestVariantReader:
 
     def test_fetch_gene2_variant(self, vcf_file):
         with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as reader:
-            variants = reader.fetch("chr1", 100, 220)
+            variants = reader.fetch("chr1", 100, 220).variants
             assert len(variants) == 1
             assert variants[0].pos == 194  # VCF 195 -> 0-based 194
             assert abs(variants[0].freq - 0.40) < 1e-6
 
     def test_min_freq_filter(self, vcf_file):
         with VariantReader(vcf_file, min_freq=0.99, min_depth=0, min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             assert len(variants) == 0
 
     def test_min_depth_filter(self, vcf_file):
         with VariantReader(vcf_file, min_freq=0.0, min_depth=999999, min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             assert len(variants) == 0
 
     def test_qual_filter(self, vcf_file):
         """Variant 4 at pos 297 has QUAL=15, should be filtered at min_qual=20."""
         with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=20) as reader:
-            variants = reader.fetch("chr1", 230, 311)
+            variants = reader.fetch("chr1", 230, 311).variants
             assert len(variants) == 0  # variant 4 filtered
 
     def test_qual_filter_disabled(self, vcf_file):
         """With min_qual=0, variant 4 should pass."""
         with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as reader:
-            variants = reader.fetch("chr1", 230, 311)
+            variants = reader.fetch("chr1", 230, 311).variants
             assert len(variants) == 1
             assert variants[0].pos == 296
 
@@ -102,7 +102,7 @@ class TestMultiallelicFiltering:
         """Default behavior: positions with >1 ALT allele are discarded."""
         with VariantReader(multiallelic_vcf_file, min_freq=0.0, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             # pos 7 has 2 ALT alleles (decomposed) -> skipped
             # Only pos 6 and pos 195 remain
             assert len(variants) == 2
@@ -115,7 +115,7 @@ class TestMultiallelicFiltering:
         """With keep_multiallelic=True, multiallelic sites are merged and kept."""
         with VariantReader(multiallelic_vcf_file, min_freq=0.0, min_depth=0,
                            min_qual=0, keep_multiallelic=True) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             # pos 7 has 2 ALT alleles -> merged and kept
             assert len(variants) == 4
             positions = [v.pos for v in variants]
@@ -130,7 +130,7 @@ class TestMultiallelicFiltering:
         """
         with VariantReader(multiallelic_vcf_file, min_freq=0.30, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             positions = [v.pos for v in variants]
             assert 6 not in positions, "multiallelic pos 7 should be skipped even if one ALT filtered"
 
@@ -146,7 +146,7 @@ class TestMultiallelicFiltering:
         """
         with VariantReader(multiallelic_vcf_file, min_freq=0.25, min_depth=0,
                            min_qual=0, keep_multiallelic=True) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             ma_variants = [v for v in variants if v.pos == 6]
             assert len(ma_variants) == 1  # only ALT=A passes min_freq
             v = ma_variants[0]
@@ -169,7 +169,7 @@ class TestMultiallelicFiltering:
         """
         with VariantReader(multiallelic_vcf_file, min_freq=0.0, min_depth=75,
                            min_qual=0, keep_multiallelic=True) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             ma_variants = [v for v in variants if v.pos == 6]
             assert len(ma_variants) == 2  # both ALTs survive
             for v in ma_variants:
@@ -183,7 +183,7 @@ class TestMultiallelicFiltering:
         """Non-decomposed multiallelic (single line ALT=A,C) is also skipped."""
         with VariantReader(multiallelic_inline_vcf_file, min_freq=0.0, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             assert len(variants) == 2
             positions = [v.pos for v in variants]
             assert 5 in positions
@@ -198,7 +198,7 @@ class TestADMissingFallback:
         """Without AD, freq/depth come from INFO/AF + FORMAT/DP."""
         with VariantReader(vcf_no_ad_info_af, min_freq=0.0, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             assert len(variants) == 2
             v1 = next(v for v in variants if v.pos == 5)
             assert abs(v1.freq - 0.20) < 1e-6
@@ -211,7 +211,7 @@ class TestADMissingFallback:
         """Without AD and without FORMAT/DP, depth falls back to INFO/DP."""
         with VariantReader(vcf_no_ad_no_format_dp, min_freq=0.0, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             assert len(variants) == 2
             v1 = next(v for v in variants if v.pos == 5)
             assert abs(v1.freq - 0.25) < 1e-6
@@ -224,14 +224,14 @@ class TestADMissingFallback:
         """Without AD and without INFO/AF, freq is 0.0 — variant filtered by min_freq."""
         with VariantReader(vcf_no_ad_no_af, min_freq=0.01, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             assert len(variants) == 0  # freq=0.0 < min_freq=0.01
 
     def test_no_ad_no_af_passes_with_zero_min_freq(self, vcf_no_ad_no_af):
         """Without AD/AF, freq=0.0 passes when min_freq=0."""
         with VariantReader(vcf_no_ad_no_af, min_freq=0.0, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             assert len(variants) == 1
             assert variants[0].freq == 0.0
             assert variants[0].depth == 100
@@ -240,7 +240,7 @@ class TestADMissingFallback:
         """Multiallelic keep-mode without AD falls back to original freq/depth."""
         with VariantReader(vcf_multiallelic_no_ad, min_freq=0.0, min_depth=0,
                            min_qual=0, keep_multiallelic=True) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             # pos 7 multiallelic: two decomposed records, no AD → fallback
             ma = [v for v in variants if v.pos == 6]
             assert len(ma) == 2
@@ -255,7 +255,7 @@ class TestADMissingFallback:
         """Multiallelic keep fallback still applies min_freq filter."""
         with VariantReader(vcf_multiallelic_no_ad, min_freq=0.25, min_depth=0,
                            min_qual=0, keep_multiallelic=True) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             ma = [v for v in variants if v.pos == 6]
             assert len(ma) == 1  # only A (0.30) passes, C (0.20) filtered
             assert ma[0].alt == "A"
@@ -264,7 +264,7 @@ class TestADMissingFallback:
         """Multiallelic keep fallback still applies min_depth filter."""
         with VariantReader(vcf_multiallelic_no_ad, min_freq=0.0, min_depth=200,
                            min_qual=0, keep_multiallelic=True) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             ma = [v for v in variants if v.pos == 6]
             assert len(ma) == 0  # depth=100 < min_depth=200
 
@@ -272,7 +272,7 @@ class TestADMissingFallback:
         """Default keep_multiallelic=False still skips multiallelic without AD."""
         with VariantReader(vcf_multiallelic_no_ad, min_freq=0.0, min_depth=0,
                            min_qual=0) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             positions = [v.pos for v in variants]
             assert 6 not in positions  # multiallelic skipped
             assert 5 in positions
@@ -288,7 +288,7 @@ class TestIndividualVariantReader:
             min_freq=0.0, min_qual=0.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             # 4 biallelic sites, all pass with no filters
             assert len(variants) == 4
 
@@ -328,7 +328,7 @@ class TestIndividualVariantReader:
             min_freq=0.0, min_qual=0.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.8, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             positions = [v.pos for v in variants]
             assert 5 not in positions   # pos 6: call_rate=0.75 < 0.8
             assert 6 in positions       # pos 7: call_rate=1.0
@@ -343,7 +343,7 @@ class TestIndividualVariantReader:
             min_freq=0.0, min_qual=0.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.0, min_an=6,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             positions = [v.pos for v in variants]
             assert 5 in positions       # AN=6 >= 6
             assert 6 in positions       # AN=8 >= 6
@@ -357,7 +357,7 @@ class TestIndividualVariantReader:
             min_freq=0.30, min_qual=0.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             positions = [v.pos for v in variants]
             assert 5 in positions       # freq=2/6=0.333 >= 0.30
             assert 6 not in positions   # freq=2/8=0.25 < 0.30
@@ -371,7 +371,7 @@ class TestIndividualVariantReader:
             min_freq=0.0, min_qual=20.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             positions = [v.pos for v in variants]
             assert 296 not in positions  # QUAL=15 < 20
 
@@ -383,7 +383,7 @@ class TestIndividualVariantReader:
             keep_multiallelic=False, min_call_rate=0.0, min_an=0,
         ) as reader:
             assert reader.n_samples == 2
-            variants = reader.fetch("chr1", 0, 100)
+            variants = reader.fetch("chr1", 0, 100).variants
             v6 = next(v for v in variants if v.pos == 5)
             # S1: 0/1 (AC=1), S2: 0/0 (AC=0) -> AC=1, AN=4
             assert abs(v6.freq - 1 / 4) < 1e-6
@@ -397,7 +397,7 @@ class TestIndividualVariantReader:
             min_freq=0.0, min_qual=0.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 10)
+            variants = reader.fetch("chr1", 0, 10).variants
             # pos 6: S4 is ./., so 0 called -> skipped
             positions = [v.pos for v in variants]
             assert 5 not in positions
@@ -412,7 +412,7 @@ class TestIndividualVariantReader:
         ) as reader:
             # cyvcf2 deduplicates: only S1, S2 loaded
             assert reader.n_samples == 2
-            variants = reader.fetch("chr1", 0, 10)
+            variants = reader.fetch("chr1", 0, 10).variants
             v6 = next(v for v in variants if v.pos == 5)
             # S1: 0/1, S2: 0/0 -> called=2, call_rate=2/2=1.0
             assert abs(v6.call_rate - 1.0) < 1e-6
@@ -436,7 +436,7 @@ class TestIndividualMultiallelic:
             min_freq=0.0, min_qual=0.0, pass_only=False,
             keep_multiallelic=False, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             positions = [v.pos for v in variants]
             assert 6 not in positions  # multiallelic skipped
             assert 5 in positions
@@ -455,7 +455,7 @@ class TestIndividualMultiallelic:
             min_freq=0.0, min_qual=0.0, pass_only=False,
             keep_multiallelic=True, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             ma = [v for v in variants if v.pos == 6]
             assert len(ma) == 2
             va = next(v for v in ma if v.alt == "A")
@@ -473,7 +473,7 @@ class TestIndividualMultiallelic:
             min_freq=0.40, min_qual=0.0, pass_only=False,
             keep_multiallelic=True, min_call_rate=0.0, min_an=0,
         ) as reader:
-            variants = reader.fetch("chr1", 0, 350)
+            variants = reader.fetch("chr1", 0, 350).variants
             # Both ALTs at pos 7 have freq=0.375 < 0.40
             ma = [v for v in variants if v.pos == 6]
             assert len(ma) == 0
