@@ -24,7 +24,7 @@ from typing import Protocol
 
 from pie.annotation import GeneModel
 from pie.reference import ReferenceGenome
-from pie.vcf import Variant
+from pie.vcf import FetchResult, FilterStats, Variant
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 class VariantReaderLike(Protocol):
     """Protocol for variant readers (VariantReader or IndividualVariantReader)."""
 
-    def fetch(self, chrom: str, start: int, end: int) -> list[Variant]: ...
+    def fetch(self, chrom: str, start: int, end: int) -> FetchResult: ...
 
 # Base encoding: A=0, C=1, G=2, T=3
 _BASE_TO_IDX = {"A": 0, "C": 1, "G": 2, "T": 3}
@@ -78,6 +78,10 @@ class GeneResult:
     codon_results: list[CodonResult] = field(default_factory=list)
     n_samples: int | None = None
     call_rates: list[float] | None = None
+    # QC / filter statistics
+    n_ambiguous_codons: int = 0
+    n_internal_stop_codons: int = 0
+    filter_stats: FilterStats = field(default_factory=FilterStats)
 
     @property
     def mean_call_rate(self) -> float | None:
@@ -301,11 +305,11 @@ def compute_gene_diversity(
     positions = ref.codon_genomic_positions(gene.cds_exons, gene.strand)
 
     # Filter out codons containing non-ACGT bases (e.g. N in reference)
-    n_skipped = 0
+    n_ambiguous = 0
     if any(base not in _VALID_CODON_BASES for codon in codons for base in codon):
         clean = [(c, p) for c, p in zip(codons, positions)
                  if all(b in _VALID_CODON_BASES for b in c)]
-        n_skipped = len(codons) - len(clean)
+        n_ambiguous = len(codons) - len(clean)
         if clean:
             codons, positions = zip(*clean)
             codons = list(codons)
@@ -313,7 +317,7 @@ def compute_gene_diversity(
         else:
             codons, positions = [], []
         log.debug("Gene %s: skipped %d codon(s) with ambiguous bases",
-                  gene.gene_id, n_skipped)
+                  gene.gene_id, n_ambiguous)
 
     # Early return when no valid codons remain (all bases ambiguous)
     if not codons:
@@ -323,12 +327,16 @@ def compute_gene_diversity(
             strand=gene.strand, n_codons=0, n_poly_codons=0,
             N_sites=0.0, S_sites=0.0, N_diffs=0.0, S_diffs=0.0,
             mean_variant_depth=0.0, n_variants=0,
+            n_ambiguous_codons=n_ambiguous,
         )
 
     # Fetch all variants across CDS exons
     all_variants: list[Variant] = []
+    gene_filter_stats = FilterStats()
     for chrom, start, end in gene.cds_exons:
-        all_variants.extend(vcf.fetch(chrom, start, end))
+        result = vcf.fetch(chrom, start, end)
+        all_variants.extend(result.variants)
+        gene_filter_stats += result.stats
 
     # Build allele frequency array
     freq_array = build_allele_freq_array(codons, positions, all_variants, gene.strand)
@@ -447,4 +455,7 @@ def compute_gene_diversity(
         n_stop_codons=n_stop_warn,
         codon_results=codon_results,
         call_rates=cr_list if cr_list else None,
+        n_ambiguous_codons=n_ambiguous,
+        n_internal_stop_codons=n_internal_stops,
+        filter_stats=gene_filter_stats,
     )

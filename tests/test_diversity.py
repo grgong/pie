@@ -10,7 +10,7 @@ from pie.diversity import (
     CodonResult,
     GeneResult,
 )
-from pie.vcf import Variant
+from pie.vcf import FetchResult, FilterStats, Variant
 
 
 class TestBuildAlleleFreqArray:
@@ -411,9 +411,10 @@ class TestFixedAltMonomorphicSiteCounts:
 
         # pos 1: A->C at freq=1.0 (AAA -> ACA, fixed derived)
         vcf = MagicMock()
-        vcf.fetch.return_value = [
-            Variant(pos=1, ref="A", alt="C", freq=1.0, depth=100),
-        ]
+        vcf.fetch.return_value = FetchResult(
+            [Variant(pos=1, ref="A", alt="C", freq=1.0, depth=100)],
+            FilterStats(),
+        )
 
         result = compute_gene_diversity(gene, ref, vcf)
 
