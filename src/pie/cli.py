@@ -111,7 +111,7 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
             sys.exit(1)
     else:  # individual
         if samples is not None:
-            selected_samples = [s.strip() for s in samples.split(",") if s.strip()]
+            selected_samples = list(samples)
         else:
             selected_samples = list(vcf_samples)
             log.info("Using all %d samples from VCF", len(selected_samples))
@@ -294,11 +294,14 @@ def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
         )
         sys.exit(1)
 
-    # Resolve samples from file
-    resolved_samples = samples
-    if samples_file is not None:
+    # Resolve samples to a list
+    if samples is not None:
+        resolved_samples = [s.strip() for s in samples.split(",") if s.strip()]
+    elif samples_file is not None:
         with open(samples_file) as fh:
-            resolved_samples = ",".join(line.strip() for line in fh if line.strip())
+            resolved_samples = [line.strip() for line in fh if line.strip()]
+    else:
+        resolved_samples = None  # _run_analysis will use all VCF samples
 
     _run_analysis(
         vcf=vcf, gff=gff, fasta=fasta, outdir=outdir, mode="individual",
