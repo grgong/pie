@@ -10,7 +10,7 @@ dependencies:
   - pysam
   - numpy
   - pandas
-  - matplotlib
+  - plotnine
   - click
   - pytest
   - htslib

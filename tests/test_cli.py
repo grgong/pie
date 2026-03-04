@@ -92,25 +92,133 @@ class TestRunCommand:
 
 
 class TestPlotCommand:
-    def test_help(self, runner):
+    def test_plot_group_help(self, runner):
         result = runner.invoke(main, ["plot", "--help"])
         assert result.exit_code == 0
-        assert "--gene-results" in result.output
+        assert "manhattan" in result.output
+        assert "scatter" in result.output
+        assert "histogram" in result.output
+        assert "boxplot" in result.output
+        assert "sliding-window" in result.output
 
-    def test_plot_from_results(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
-        # First run the analysis
+    def test_manhattan_help(self, runner):
+        result = runner.invoke(main, ["plot", "manhattan", "--help"])
+        assert result.exit_code == 0
+        assert "--input" in result.output
+        assert "--output" in result.output
+        assert "--log-scale" in result.output
+        assert "--label-top" in result.output
+        assert "--highlight-genes" in result.output
+
+    def test_scatter_help(self, runner):
+        result = runner.invoke(main, ["plot", "scatter", "--help"])
+        assert result.exit_code == 0
+        assert "--color-by-chrom" in result.output
+
+    def test_manhattan_from_results(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         runner.invoke(main, [
             "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
             "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
-        # Then plot
         result = runner.invoke(main, [
-            "plot",
-            "--gene-results", str(tmp_path / "gene_results.tsv"),
-            "--output", str(tmp_path / "manhattan.png"),
+            "plot", "manhattan",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "manhattan.png"),
         ])
         assert result.exit_code == 0, result.output
         assert (tmp_path / "manhattan.png").exists()
+
+    def test_scatter_from_results(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "scatter",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "scatter.png"),
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "scatter.png").exists()
+
+    def test_boxplot_from_results(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "boxplot",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "boxplot.png"),
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "boxplot.png").exists()
+
+    def test_histogram_from_results(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "histogram",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "histogram.png"),
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "histogram.png").exists()
+
+    def test_sliding_window_from_results(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "sliding-window",
+            "-i", str(tmp_path / "window_results.tsv"),
+            "-o", str(tmp_path / "sw.png"),
+        ])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "sw.png").exists()
+
+    def test_filter_options_in_help(self, runner):
+        """All plot subcommands expose shared and metric-specific filter options."""
+        for cmd, expected in [
+            ("manhattan", ["--max-ratio", "--exclude-zero-ratio", "--min-codons", "--min-variants"]),
+            ("scatter", ["--max-piN", "--max-piS", "--min-codons", "--min-variants"]),
+            ("histogram", ["--max-ratio", "--exclude-zero-ratio", "--min-codons", "--min-variants"]),
+            ("boxplot", ["--max-piN", "--max-piS", "--max-ratio", "--exclude-zero-ratio", "--min-codons", "--min-variants"]),
+            ("sliding-window", ["--max-ratio"]),
+        ]:
+            result = runner.invoke(main, ["plot", cmd, "--help"])
+            assert result.exit_code == 0
+            for opt in expected:
+                assert opt in result.output, f"{opt} missing from 'plot {cmd} --help'"
+
+    def test_manhattan_with_filters(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "manhattan",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "manhattan.png"),
+            "--max-ratio", "1.5", "--exclude-zero-ratio",
+        ])
+        assert result.exit_code == 0, result.output
+
+    def test_boxplot_with_filters(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "boxplot",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "boxplot.png"),
+            "--max-piN", "1.0", "--max-piS", "1.0", "--max-ratio", "1.5",
+        ])
+        assert result.exit_code == 0, result.output
 
 
 class TestSummaryCommand:

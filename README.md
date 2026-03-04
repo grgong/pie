@@ -84,7 +84,7 @@ pip install -e .
 ```
 
 Requires Python >= 3.12. Key dependencies: cyvcf2, gffutils, pysam, numpy,
-pandas, matplotlib, click.
+pandas, plotnine, click.
 
 ## Quick start
 
@@ -111,8 +111,12 @@ pie run -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
 # View summary
 pie summary results/summary.tsv
 
-# Generate Manhattan plot
-pie plot -i results/gene_results.tsv -o results/piN_piS_manhattan.png
+# Generate plots
+pie plot manhattan -i results/gene_results.tsv -o manhattan.png
+pie plot scatter -i results/gene_results.tsv -o scatter.png --color-by-chrom
+pie plot histogram -i results/gene_results.tsv -o histogram.png
+pie plot boxplot -i results/gene_results.tsv -o boxplot.png
+pie plot sliding-window -i results/window_results.tsv -o sw.png
 ```
 
 ## Input requirements
@@ -164,18 +168,80 @@ pie run -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 
 ### `pie plot`
 
-Generate a Manhattan plot from gene results.
+Create publication-ready plots from piN/piS results.  Five subcommands are
+available; all produce 300 DPI output in PNG, PDF, or SVG (auto-detected from
+the file extension).  Default figure sizes follow NPG (Nature) journal specs.
 
-```
-pie plot -i FILE -o FILE [OPTIONS]
-```
+**Shared options** (all subcommands except `sliding-window`):
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--gene-results` | `-i` | required | Path to `gene_results.tsv` |
-| `--output` | `-o` | required | Output PNG path |
-| `--width` | `-W` | 16.0 | Figure width in inches |
-| `--height` | `-H` | 6.0 | Figure height in inches |
+| `--input` | `-i` | required | Input TSV file |
+| `--output` | `-o` | required | Output plot path |
+| `--width` | `-W` | *(per subcommand)* | Figure width in inches |
+| `--height` | `-H` | *(per subcommand)* | Figure height in inches |
+| `--dpi` | | 300 | Resolution in dots per inch |
+| `--min-codons` | | — | Exclude genes with fewer than N codons |
+| `--min-variants` | | — | Exclude genes with fewer than N variants |
+
+#### `pie plot manhattan`
+
+Genome-wide Manhattan plot of per-gene piN/piS.  Input: `gene_results.tsv`.
+Default size: 7.2 × 3.5 in (double column).
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--log-scale` | off | Use log₂ scale for piN/piS y-axis |
+| `--label-top` | — | Label top N outlier genes |
+| `--highlight-genes` | — | Comma-separated gene IDs to label |
+| `--max-ratio` | 2.0 | Exclude genes with piN/piS above this value |
+| `--exclude-zero-ratio` | off | Exclude genes with piN/piS = 0 |
+
+#### `pie plot scatter`
+
+piN vs piS scatter plot with point size reflecting gene length.
+Input: `gene_results.tsv`.  Default size: 4.7 × 4.7 in (1.5 column).
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--color-by-chrom` | off | Color points by chromosome |
+| `--max-piN` | 2.0 | Exclude genes with piN above this value |
+| `--max-piS` | 2.0 | Exclude genes with piS above this value |
+
+#### `pie plot histogram`
+
+Distribution of piN/piS ratios with density overlay.
+Input: `gene_results.tsv`.  Default size: 3.5 × 3.0 in (single column).
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--max-ratio` | 2.0 | Exclude genes with piN/piS above this value |
+| `--exclude-zero-ratio` | off | Exclude genes with piN/piS = 0 |
+
+#### `pie plot boxplot`
+
+Per-chromosome boxplots of piN, piS, and piN/piS (three faceted panels).
+Each metric is filtered independently.  Input: `gene_results.tsv`.
+Default size: 3.5 × 7.0 in (single column).
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--max-piN` | 2.0 | Exclude genes with piN above this value |
+| `--max-piS` | 2.0 | Exclude genes with piS above this value |
+| `--max-ratio` | 2.0 | Exclude genes with piN/piS above this value |
+| `--exclude-zero-ratio` | off | Exclude genes with piN/piS = 0 |
+
+#### `pie plot sliding-window`
+
+Sliding window piN/piS line plot, one row per chromosome.
+Input: `window_results.tsv`.  Default size: 7.2 in wide × 1.5 in per chromosome.
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--max-ratio` | 2.0 | Exclude windows with piN/piS above this value |
+
+> **Note:** `--min-codons` and `--min-variants` are not available for
+> `sliding-window` because it operates on window-level data, not per-gene data.
 
 ### `pie summary`
 
@@ -262,12 +328,6 @@ n_samples_selected and mean_call_rate (variant-site-weighted average).
 
 Genome-wide piN and piS are computed by summing N/S diffs and sites
 across all genes before dividing (not averaging per-gene ratios).
-
-### `piN_piS_manhattan.png`
-
-Manhattan plot with genomic position on the x-axis, per-gene piN/piS on
-the y-axis, chromosomes in alternating colors, and a dashed line at
-piN/piS = 1 (neutral expectation).
 
 ## Algorithm
 

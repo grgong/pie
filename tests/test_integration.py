@@ -124,9 +124,9 @@ class TestEndToEnd:
     def test_plot_generation(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         out = self._run_analysis(runner, ref_fasta, gff3_file, vcf_file, tmp_path)
         result = runner.invoke(main, [
-            "plot",
-            "--gene-results", str(out / "gene_results.tsv"),
-            "--output", str(out / "manhattan.png"),
+            "plot", "manhattan",
+            "-i", str(out / "gene_results.tsv"),
+            "-o", str(out / "manhattan.png"),
         ])
         assert result.exit_code == 0
         assert (out / "manhattan.png").exists()
