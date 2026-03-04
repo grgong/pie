@@ -87,6 +87,10 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
             click.echo(f"Error: {name} file not found: {path}", err=True)
             sys.exit(1)
 
+    # Ensure VCF is indexed (bgzip + tabix if needed) before any reads
+    vcf = ensure_indexed(vcf)
+    log.info("VCF ready: %s", vcf)
+
     # --- Resolve sample list ---
     vcf_samples = get_sample_names(vcf)
     selected_samples = None
@@ -111,7 +115,7 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
             sys.exit(1)
     else:  # individual
         if samples is not None:
-            selected_samples = list(samples)
+            selected_samples = samples
         else:
             selected_samples = list(vcf_samples)
             log.info("Using all %d samples from VCF", len(selected_samples))
@@ -121,12 +125,7 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
             sys.exit(1)
 
         # Deduplicate sample names (preserving order)
-        seen = set()
-        deduped = []
-        for s in selected_samples:
-            if s not in seen:
-                seen.add(s)
-                deduped.append(s)
+        deduped = list(dict.fromkeys(selected_samples))
         if len(deduped) < len(selected_samples):
             log.warning("Duplicate sample names removed: %d -> %d unique",
                         len(selected_samples), len(deduped))
@@ -146,10 +145,6 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
 
     # Create output directory
     os.makedirs(outdir, exist_ok=True)
-
-    # Ensure VCF is indexed
-    vcf = ensure_indexed(vcf)
-    log.info("VCF ready: %s", vcf)
 
     # Run analysis
     log.info("Starting piN/piS analysis with %d thread(s) in %s mode", threads, mode)
@@ -255,7 +250,7 @@ def pool(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
               help="Comma-separated sample names.")
 @click.option("--samples-file", default=None, type=click.Path(exists=True, dir_okay=False),
               help="File with one sample name per line.")
-@click.option("--min-call-rate", default=0.8, show_default=True, type=float,
+@click.option("--min-call-rate", default=0.8, show_default=True, type=click.FloatRange(0.0, 1.0),
               help="Minimum genotype call rate.")
 @click.option("--min-an", default=2, show_default=True, type=int,
               help="Minimum allele number (AN).")
@@ -283,13 +278,6 @@ def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
     if samples is not None and samples_file is not None:
         click.echo(
             "Error: --samples and --samples-file are mutually exclusive.",
-            err=True,
-        )
-        sys.exit(1)
-
-    if not (0.0 <= min_call_rate <= 1.0):
-        click.echo(
-            f"Error: --min-call-rate must be between 0 and 1, got {min_call_rate}",
             err=True,
         )
         sys.exit(1)
