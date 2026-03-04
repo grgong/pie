@@ -180,6 +180,46 @@ class TestPlotCommand:
         assert result.exit_code == 0, result.output
         assert (tmp_path / "sw.png").exists()
 
+    def test_filter_options_in_help(self, runner):
+        """All plot subcommands expose shared and metric-specific filter options."""
+        for cmd, expected in [
+            ("manhattan", ["--max-ratio", "--exclude-zero-ratio", "--min-codons", "--min-variants"]),
+            ("scatter", ["--max-piN", "--max-piS", "--min-codons", "--min-variants"]),
+            ("histogram", ["--max-ratio", "--exclude-zero-ratio", "--min-codons", "--min-variants"]),
+            ("boxplot", ["--max-piN", "--max-piS", "--max-ratio", "--exclude-zero-ratio", "--min-codons", "--min-variants"]),
+            ("sliding-window", ["--max-ratio"]),
+        ]:
+            result = runner.invoke(main, ["plot", cmd, "--help"])
+            assert result.exit_code == 0
+            for opt in expected:
+                assert opt in result.output, f"{opt} missing from 'plot {cmd} --help'"
+
+    def test_manhattan_with_filters(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "manhattan",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "manhattan.png"),
+            "--max-ratio", "1.5", "--exclude-zero-ratio",
+        ])
+        assert result.exit_code == 0, result.output
+
+    def test_boxplot_with_filters(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        runner.invoke(main, [
+            "run", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
+        ])
+        result = runner.invoke(main, [
+            "plot", "boxplot",
+            "-i", str(tmp_path / "gene_results.tsv"),
+            "-o", str(tmp_path / "boxplot.png"),
+            "--max-piN", "1.0", "--max-piS", "1.0", "--max-ratio", "1.5",
+        ])
+        assert result.exit_code == 0, result.output
+
 
 class TestSummaryCommand:
     def test_help(self, runner):

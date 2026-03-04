@@ -1,6 +1,9 @@
 import pandas as pd
 import pytest
-from pie.plot import manhattan_plot, scatter_plot, histogram_plot, boxplot_plot, sliding_window_plot
+from pie.plot import (
+    manhattan_plot, scatter_plot, histogram_plot, boxplot_plot, sliding_window_plot,
+    _apply_base_qc, _filter_ratio, _filter_metric,
+)
 
 
 def _make_gene_tsv(tmp_path, df):
@@ -189,6 +192,77 @@ class TestBoxplotPlot:
         tsv = _make_gene_tsv(tmp_path, df)
         out = str(tmp_path / "boxplot.png")
         boxplot_plot(tsv, out)
+        assert (tmp_path / "boxplot.png").exists()
+
+
+class TestFilterHelpers:
+    def test_apply_base_qc_min_codons(self, basic_gene_df):
+        result = _apply_base_qc(basic_gene_df, min_codons=35)
+        assert len(result) == 2  # only g2 (40) and g4 (50)
+
+    def test_apply_base_qc_none_is_noop(self, basic_gene_df):
+        result = _apply_base_qc(basic_gene_df)
+        assert len(result) == len(basic_gene_df)
+
+    def test_filter_ratio_drops_na(self):
+        df = pd.DataFrame({"piN_piS": [0.5, float("nan"), 1.0], "piS": [0.01, 0.02, 0.03]})
+        result = _filter_ratio(df)
+        assert len(result) == 2
+
+    def test_filter_ratio_max(self):
+        df = pd.DataFrame({"piN_piS": [0.5, 1.5, 3.0], "piS": [0.01, 0.02, 0.03]})
+        result = _filter_ratio(df, max_ratio=2.0)
+        assert len(result) == 2
+
+    def test_filter_ratio_exclude_zero(self):
+        df = pd.DataFrame({"piN_piS": [0.0, 0.5, 1.0], "piS": [0.01, 0.02, 0.03]})
+        result = _filter_ratio(df, exclude_zero_ratio=True)
+        assert len(result) == 2
+
+    def test_filter_metric(self):
+        df = pd.DataFrame({"piN": [0.01, 0.05, 3.0, float("nan")]})
+        result = _filter_metric(df, "piN", max_value=2.0)
+        assert len(result) == 2
+
+
+class TestManhattanWithFilters:
+    def test_max_ratio(self, tmp_path, basic_gene_df):
+        tsv = _make_gene_tsv(tmp_path, basic_gene_df)
+        out = str(tmp_path / "manhattan.png")
+        manhattan_plot(tsv, out, max_ratio=1.0)
+        assert (tmp_path / "manhattan.png").exists()
+
+    def test_exclude_zero_ratio(self, tmp_path):
+        df = pd.DataFrame({
+            "chrom": ["chr1", "chr1"], "gene_id": ["g1", "g2"],
+            "start": [100, 300], "end": [200, 400], "n_codons": [30, 40],
+            "piN": [0.0, 0.02], "piS": [0.02, 0.01], "piN_piS": [0.0, 2.0],
+        })
+        tsv = _make_gene_tsv(tmp_path, df)
+        out = str(tmp_path / "manhattan.png")
+        manhattan_plot(tsv, out, exclude_zero_ratio=True)
+        assert (tmp_path / "manhattan.png").exists()
+
+    def test_min_codons(self, tmp_path, basic_gene_df):
+        tsv = _make_gene_tsv(tmp_path, basic_gene_df)
+        out = str(tmp_path / "manhattan.png")
+        manhattan_plot(tsv, out, min_codons=35)
+        assert (tmp_path / "manhattan.png").exists()
+
+
+class TestScatterWithFilters:
+    def test_max_piN_piS(self, tmp_path, basic_gene_df):
+        tsv = _make_gene_tsv(tmp_path, basic_gene_df)
+        out = str(tmp_path / "scatter.png")
+        scatter_plot(tsv, out, max_piN=0.02, max_piS=0.02)
+        assert (tmp_path / "scatter.png").exists()
+
+
+class TestBoxplotWithFilters:
+    def test_per_facet_filtering(self, tmp_path, basic_gene_df):
+        tsv = _make_gene_tsv(tmp_path, basic_gene_df)
+        out = str(tmp_path / "boxplot.png")
+        boxplot_plot(tsv, out, max_piN=0.02, max_piS=0.02, max_ratio=1.5)
         assert (tmp_path / "boxplot.png").exists()
 
 

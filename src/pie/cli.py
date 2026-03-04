@@ -305,21 +305,26 @@ def plot():
 
 
 def _shared_plot_options(f):
-    """Decorator: shared options for all plot subcommands."""
+    """Decorator: shared options for all plot subcommands (except sliding-window)."""
     f = click.option("-i", "--input", "input_path", required=True, help="Input TSV file.")(f)
     f = click.option("-o", "--output", "output_path", required=True, help="Output plot path (PNG/PDF/SVG).")(f)
-    f = click.option("-W", "--width", default=12.0, show_default=True, help="Figure width in inches.")(f)
-    f = click.option("-H", "--height", default=6.0, show_default=True, help="Figure height in inches.")(f)
     f = click.option("--dpi", default=300, show_default=True, help="Resolution in dots per inch.")(f)
+    f = click.option("--min-codons", default=None, type=int, help="Exclude genes with fewer than N codons.")(f)
+    f = click.option("--min-variants", default=None, type=int, help="Exclude genes with fewer than N variants.")(f)
     return f
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
 @_shared_plot_options
+@click.option("-W", "--width", default=7.2, show_default=True, help="Figure width in inches.")
+@click.option("-H", "--height", default=3.5, show_default=True, help="Figure height in inches.")
 @click.option("--log-scale", is_flag=True, help="Use log2 scale for piN/piS y-axis.")
 @click.option("--label-top", default=None, type=int, help="Label top N outlier genes.")
 @click.option("--highlight-genes", default=None, help="Comma-separated gene IDs to label.")
-def manhattan(input_path, output_path, width, height, dpi, log_scale, label_top, highlight_genes):
+@click.option("--max-ratio", default=2.0, show_default=True, help="Exclude genes with piN/piS above this value.")
+@click.option("--exclude-zero-ratio", is_flag=True, help="Exclude genes with piN/piS = 0 (robustness check).")
+def manhattan(input_path, output_path, width, height, dpi, min_codons, min_variants,
+              log_scale, label_top, highlight_genes, max_ratio, exclude_zero_ratio):
     """Create Manhattan plot of per-gene piN/piS.
 
     \b
@@ -340,14 +345,21 @@ def manhattan(input_path, output_path, width, height, dpi, log_scale, label_top,
 
     genes = [g.strip() for g in highlight_genes.split(",")] if highlight_genes else None
     _manhattan_plot(input_path, output_path, width=width, height=height, dpi=dpi,
-                    log_scale=log_scale, label_top=label_top, highlight_genes=genes)
+                    log_scale=log_scale, label_top=label_top, highlight_genes=genes,
+                    max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio,
+                    min_codons=min_codons, min_variants=min_variants)
     click.echo(f"Plot saved to {output_path}")
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
 @_shared_plot_options
+@click.option("-W", "--width", default=4.7, show_default=True, help="Figure width in inches.")
+@click.option("-H", "--height", default=4.7, show_default=True, help="Figure height in inches.")
 @click.option("--color-by-chrom", is_flag=True, help="Color points by chromosome.")
-def scatter(input_path, output_path, width, height, dpi, color_by_chrom):
+@click.option("--max-piN", default=2.0, show_default=True, help="Exclude genes with piN above this value.")
+@click.option("--max-piS", default=2.0, show_default=True, help="Exclude genes with piS above this value.")
+def scatter(input_path, output_path, width, height, dpi, min_codons, min_variants,
+            color_by_chrom, max_pin, max_pis):
     """Create piN vs piS scatter plot.
 
     \b
@@ -367,13 +379,19 @@ def scatter(input_path, output_path, width, height, dpi, color_by_chrom):
         sys.exit(1)
 
     _scatter_plot(input_path, output_path, width=width, height=height, dpi=dpi,
-                  color_by_chrom=color_by_chrom)
+                  color_by_chrom=color_by_chrom, max_piN=max_pin, max_piS=max_pis,
+                  min_codons=min_codons, min_variants=min_variants)
     click.echo(f"Plot saved to {output_path}")
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
 @_shared_plot_options
-def histogram(input_path, output_path, width, height, dpi):
+@click.option("-W", "--width", default=3.5, show_default=True, help="Figure width in inches.")
+@click.option("-H", "--height", default=3.0, show_default=True, help="Figure height in inches.")
+@click.option("--max-ratio", default=2.0, show_default=True, help="Exclude genes with piN/piS above this value.")
+@click.option("--exclude-zero-ratio", is_flag=True, help="Exclude genes with piN/piS = 0 (robustness check).")
+def histogram(input_path, output_path, width, height, dpi, min_codons, min_variants,
+              max_ratio, exclude_zero_ratio):
     """Create histogram of piN/piS distribution.
 
     \b
@@ -390,13 +408,22 @@ def histogram(input_path, output_path, width, height, dpi):
         click.echo(f"Error: file not found: {input_path}", err=True)
         sys.exit(1)
 
-    _histogram_plot(input_path, output_path, width=width, height=height, dpi=dpi)
+    _histogram_plot(input_path, output_path, width=width, height=height, dpi=dpi,
+                    max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio,
+                    min_codons=min_codons, min_variants=min_variants)
     click.echo(f"Plot saved to {output_path}")
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
 @_shared_plot_options
-def boxplot(input_path, output_path, width, height, dpi):
+@click.option("-W", "--width", default=3.5, show_default=True, help="Figure width in inches.")
+@click.option("-H", "--height", default=7.0, show_default=True, help="Figure height in inches.")
+@click.option("--max-piN", default=2.0, show_default=True, help="Exclude genes with piN above this value.")
+@click.option("--max-piS", default=2.0, show_default=True, help="Exclude genes with piS above this value.")
+@click.option("--max-ratio", default=2.0, show_default=True, help="Exclude genes with piN/piS above this value.")
+@click.option("--exclude-zero-ratio", is_flag=True, help="Exclude genes with piN/piS = 0 (robustness check).")
+def boxplot(input_path, output_path, width, height, dpi, min_codons, min_variants,
+            max_pin, max_pis, max_ratio, exclude_zero_ratio):
     """Create per-chromosome boxplots of piN, piS, and piN/piS.
 
     \b
@@ -414,13 +441,22 @@ def boxplot(input_path, output_path, width, height, dpi):
         click.echo(f"Error: file not found: {input_path}", err=True)
         sys.exit(1)
 
-    _boxplot_plot(input_path, output_path, width=width, height=height, dpi=dpi)
+    _boxplot_plot(input_path, output_path, width=width, height=height, dpi=dpi,
+                  max_piN=max_pin, max_piS=max_pis, max_ratio=max_ratio,
+                  exclude_zero_ratio=exclude_zero_ratio,
+                  min_codons=min_codons, min_variants=min_variants)
     click.echo(f"Plot saved to {output_path}")
 
 
 @plot.command("sliding-window", no_args_is_help=True, context_settings=_HELP_OPTS)
-@_shared_plot_options
-def sliding_window(input_path, output_path, width, height, dpi):
+@click.option("-i", "--input", "input_path", required=True, help="Input TSV file.")
+@click.option("-o", "--output", "output_path", required=True, help="Output plot path (PNG/PDF/SVG).")
+@click.option("-W", "--width", default=7.2, show_default=True, help="Figure width in inches.")
+@click.option("-H", "--height", default=None, type=float, help="Figure height in inches.  [default: 1.5 per chromosome]")
+@click.option("--dpi", default=300, show_default=True, help="Resolution in dots per inch.")
+@click.option("--max-ratio", default=2.0, show_default=True, help="Exclude windows with piN/piS above this value.")
+def sliding_window(input_path, output_path, width, height, dpi,
+                   max_ratio):
     """Create sliding window piN/piS line plot.
 
     \b
@@ -437,7 +473,8 @@ def sliding_window(input_path, output_path, width, height, dpi):
         click.echo(f"Error: file not found: {input_path}", err=True)
         sys.exit(1)
 
-    _sliding_window_plot(input_path, output_path, width=width, height=height, dpi=dpi)
+    _sliding_window_plot(input_path, output_path, width=width, height=height, dpi=dpi,
+                         max_ratio=max_ratio)
     click.echo(f"Plot saved to {output_path}")
 
 
