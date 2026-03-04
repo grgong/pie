@@ -24,8 +24,9 @@ def main():
 
     \b
     Quick start:
-      pie run -v variants.vcf.gz -g genes.gff3 -f ref.fa -o results/
-      pie plot -i results/gene_results.tsv -o manhattan.png
+      pie run pool -v variants.vcf.gz -g genes.gff3 -f ref.fa -o results/
+      pie run ind  -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o results/
+      pie plot manhattan -i results/gene_results.tsv -o manhattan.png
       pie summary results/summary.tsv
 
     \b
@@ -38,83 +39,40 @@ def main():
     )
 
 
-@main.command(no_args_is_help=True, context_settings=_HELP_OPTS)
-@click.option("-v", "--vcf", required=True, help="Input VCF file (bgzipped or plain).")
-@click.option("-g", "--gff", required=True, help="GFF3 or GTF annotation file.")
-@click.option("-f", "--fasta", required=True, help="Reference FASTA file (must be indexed with .fai).")
-@click.option("-o", "--outdir", required=True, help="Output directory (created if absent).")
-@click.option("-m", "--mode", default="pool", show_default=True,
-              help="Analysis mode: 'pool' (pool-seq) or 'individual'/'ind'.")
-@click.option("--min-freq", default=0.01, show_default=True, help="Minimum allele frequency.")
-@click.option("-d", "--min-depth", default=None, type=int,
-              help="Minimum read depth.  [pool mode only, default: 10]")
-@click.option("-q", "--min-qual", default=20.0, show_default=True, help="Minimum variant quality (QUAL).")
-@click.option("--pass-only", is_flag=True, help="Only use PASS-filtered variants.")
-@click.option("--keep-multiallelic", is_flag=True,
-              help="Keep and merge multiallelic sites instead of skipping them.")
-@click.option("--include-stop-codons", is_flag=True,
-              help="Count stop_gained as nonsynonymous (excluded by default, matching NG86/SNPGenie).")
-@click.option("-w", "--window-size", default=1000, show_default=True, help="Sliding window size in bp.")
-@click.option("-W", "--window-step", default=100, show_default=True, type=click.IntRange(min=1),
-              help="Sliding window step in bp.")
-@click.option("-t", "--threads", default=1, show_default=True, help="Number of parallel threads.")
-@click.option("--quiet", is_flag=True, help="Suppress progress messages (show only warnings and summary).")
-@click.option("-s", "--sample", default=None,
-              help="Sample name to analyse.  [pool mode only, for multi-sample VCFs]")
-@click.option("-S", "--samples", default=None,
-              help="Comma-separated sample names.  [individual mode only]")
-@click.option("--samples-file", default=None, type=click.Path(exists=True, dir_okay=False),
-              help="File with one sample name per line.  [individual mode only]")
-@click.option("--min-call-rate", default=None, type=float,
-              help="Minimum genotype call rate.  [individual mode only, default: 0.8]")
-@click.option("--min-an", default=None, type=int,
-              help="Minimum allele number (AN).  [individual mode only, default: 2]")
-def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
-        pass_only, keep_multiallelic, include_stop_codons, window_size,
-        window_step, threads, quiet, sample, samples, samples_file,
-        min_call_rate, min_an):
-    """Run piN/piS analysis.
+# ---------------------------------------------------------------------------
+# Shared run options
+# ---------------------------------------------------------------------------
 
-    \b
-    Estimate per-gene and sliding-window piN/piS from variant calls.  Two
-    analysis modes are supported:
-      pool        — allele-frequency based (pool-seq / single-sample VCF)
-      individual  — genotype based (multi-sample VCF with GT fields)
+def _shared_run_options(f):
+    """Decorator: shared options for both pool and ind subcommands."""
+    f = click.option("-v", "--vcf", required=True, help="Input VCF file (bgzipped or plain).")(f)
+    f = click.option("-g", "--gff", required=True, help="GFF3 or GTF annotation file.")(f)
+    f = click.option("-f", "--fasta", required=True, help="Reference FASTA file (must be indexed with .fai).")(f)
+    f = click.option("-o", "--outdir", required=True, help="Output directory (created if absent).")(f)
+    f = click.option("--min-freq", default=0.01, show_default=True, help="Minimum allele frequency.")(f)
+    f = click.option("-q", "--min-qual", default=20.0, show_default=True, help="Minimum variant quality (QUAL).")(f)
+    f = click.option("--pass-only", is_flag=True, help="Only use PASS-filtered variants.")(f)
+    f = click.option("--keep-multiallelic", is_flag=True,
+                     help="Keep and merge multiallelic sites instead of skipping them.")(f)
+    f = click.option("--include-stop-codons", is_flag=True,
+                     help="Count stop_gained as nonsynonymous (excluded by default, matching NG86/SNPGenie).")(f)
+    f = click.option("-w", "--window-size", default=1000, show_default=True, help="Sliding window size in bp.")(f)
+    f = click.option("-W", "--window-step", default=100, show_default=True, type=click.IntRange(min=1),
+                     help="Sliding window step in bp.")(f)
+    f = click.option("-t", "--threads", default=1, show_default=True, help="Number of parallel threads.")(f)
+    f = click.option("--quiet", is_flag=True, help="Suppress progress messages (show only warnings and summary).")(f)
+    return f
 
-    \b
-    Outputs (written to --outdir):
-      gene_results.tsv    Per-gene piN, piS, piN/piS, and site counts
-      window_results.tsv  Sliding-window piN/piS along each chromosome
-      summary.tsv         Genome-wide weighted-average statistics
 
-    \b
-    Examples:
-      # Pool-seq (default mode), basic usage:
-      pie run -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/
+# ---------------------------------------------------------------------------
+# Shared analysis logic
+# ---------------------------------------------------------------------------
 
-    \b
-      # Pool-seq with stricter filters and 8 threads:
-      pie run -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/ \\
-          -d 20 -q 30 --pass-only -t 8
-
-    \b
-      # Multi-sample pool VCF — select one sample:
-      pie run -v multi.vcf.gz -g genes.gff3 -f ref.fa -o out/ -s SampleA
-
-    \b
-      # Individual mode — all samples in VCF:
-      pie run -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ -m individual
-
-    \b
-      # Individual mode — subset of samples:
-      pie run -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ -m ind \\
-          -S sampleA,sampleB,sampleC
-
-    \b
-      # Individual mode — samples from a file:
-      pie run -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ -m ind \\
-          --samples-file sample_list.txt --min-call-rate 0.9
-    """
+def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
+                  min_qual, pass_only, keep_multiallelic, include_stop_codons,
+                  window_size, window_step, threads, quiet, sample=None,
+                  samples=None, min_call_rate=None, min_an=None):
+    """Core analysis logic shared by pool and ind subcommands."""
     from pie.vcf import ensure_indexed, get_sample_names
     from pie.parallel import run_parallel
     from pie.annotation import NoGenesFoundError
@@ -122,64 +80,6 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
 
     if quiet:
         logging.getLogger("pie").setLevel(logging.WARNING)
-
-    # --- Normalize mode ---
-    if mode == "ind":
-        mode = "individual"
-    if mode not in ("pool", "individual"):
-        click.echo(f"Error: --mode must be 'pool', 'individual', or 'ind', got '{mode}'", err=True)
-        sys.exit(1)
-
-    # --- Cross-option validation ---
-    if mode == "pool":
-        for opt_name, opt_val in [("--samples", samples), ("--samples-file", samples_file),
-                                  ("--min-call-rate", min_call_rate), ("--min-an", min_an)]:
-            if opt_val is not None:
-                click.echo(
-                    f"Error: {opt_name} is only valid in individual mode, not pool mode.",
-                    err=True,
-                )
-                sys.exit(1)
-        # Default min_depth for pool mode
-        if min_depth is None:
-            min_depth = 10
-    else:  # individual
-        if sample is not None:
-            click.echo(
-                "Error: --sample is only valid in pool mode. "
-                "Use --samples for individual mode.",
-                err=True,
-            )
-            sys.exit(1)
-        if min_depth is not None:
-            click.echo(
-                "Error: --min-depth is only valid in pool mode, not individual mode.",
-                err=True,
-            )
-            sys.exit(1)
-
-    # --- Individual-mode specific validation ---
-    if mode == "individual":
-        if samples is not None and samples_file is not None:
-            click.echo(
-                "Error: --samples and --samples-file are mutually exclusive.",
-                err=True,
-            )
-            sys.exit(1)
-
-        if min_call_rate is not None and not (0.0 <= min_call_rate <= 1.0):
-            click.echo(
-                f"Error: --min-call-rate must be between 0 and 1, got {min_call_rate}",
-                err=True,
-            )
-            sys.exit(1)
-
-        # Apply defaults for individual mode
-        if min_call_rate is None:
-            min_call_rate = 0.8
-        if min_an is None:
-            min_an = 2
-        min_depth = 0  # unused in individual mode but required by run_parallel
 
     # --- Validate inputs exist ---
     for path, name in [(vcf, "VCF"), (gff, "GFF"), (fasta, "FASTA")]:
@@ -192,7 +92,6 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
     selected_samples = None
 
     if mode == "pool":
-        # Pool mode: existing --sample validation
         if sample is not None:
             if sample not in vcf_samples:
                 click.echo(
@@ -213,11 +112,8 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
     else:  # individual
         if samples is not None:
             selected_samples = [s.strip() for s in samples.split(",") if s.strip()]
-        elif samples_file is not None:
-            with open(samples_file) as fh:
-                selected_samples = [line.strip() for line in fh if line.strip()]
         else:
-            selected_samples = list(vcf_samples)  # use all VCF samples
+            selected_samples = list(vcf_samples)
             log.info("Using all %d samples from VCF", len(selected_samples))
 
         if not selected_samples:
@@ -237,7 +133,7 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
             selected_samples = deduped
 
         # Validate sample names exist in VCF
-        if samples is not None or samples_file is not None:
+        if samples is not None:
             missing = [s for s in selected_samples if s not in vcf_samples]
             if missing:
                 click.echo(
@@ -289,6 +185,134 @@ def run(vcf, gff, fasta, outdir, mode, min_freq, min_depth, min_qual,
 
     click.echo(f"Done. Results written to {outdir}/")
 
+
+# ---------------------------------------------------------------------------
+# pie run (group)
+# ---------------------------------------------------------------------------
+
+@main.group(invoke_without_command=True, no_args_is_help=True, context_settings=_HELP_OPTS)
+def run():
+    """Run piN/piS analysis.
+
+    \b
+    Subcommands:
+      pool  — allele-frequency based (pool-seq / single-sample VCF)
+      ind   — genotype based (multi-sample VCF with GT fields)
+
+    \b
+    Outputs (written to --outdir):
+      gene_results.tsv    Per-gene piN, piS, piN/piS, and site counts
+      window_results.tsv  Sliding-window piN/piS along each chromosome
+      summary.tsv         Genome-wide weighted-average statistics
+    """
+
+
+# ---------------------------------------------------------------------------
+# pie run pool
+# ---------------------------------------------------------------------------
+
+@run.command(no_args_is_help=True, context_settings=_HELP_OPTS)
+@_shared_run_options
+@click.option("-d", "--min-depth", default=10, show_default=True, type=int,
+              help="Minimum read depth.")
+@click.option("-s", "--sample", default=None,
+              help="Sample name to analyse (for multi-sample VCFs).")
+def pool(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
+         keep_multiallelic, include_stop_codons, window_size, window_step,
+         threads, quiet, min_depth, sample):
+    """Run pool-seq piN/piS analysis (allele-frequency based).
+
+    \b
+    Examples:
+      # Basic usage:
+      pie run pool -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/
+
+    \b
+      # Stricter filters and 8 threads:
+      pie run pool -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/ \\
+          -d 20 -q 30 --pass-only -t 8
+
+    \b
+      # Multi-sample pool VCF — select one sample:
+      pie run pool -v multi.vcf.gz -g genes.gff3 -f ref.fa -o out/ -s SampleA
+    """
+    _run_analysis(
+        vcf=vcf, gff=gff, fasta=fasta, outdir=outdir, mode="pool",
+        min_freq=min_freq, min_depth=min_depth, min_qual=min_qual,
+        pass_only=pass_only, keep_multiallelic=keep_multiallelic,
+        include_stop_codons=include_stop_codons, window_size=window_size,
+        window_step=window_step, threads=threads, quiet=quiet, sample=sample,
+    )
+
+
+# ---------------------------------------------------------------------------
+# pie run ind
+# ---------------------------------------------------------------------------
+
+@run.command(no_args_is_help=True, context_settings=_HELP_OPTS)
+@_shared_run_options
+@click.option("-S", "--samples", default=None,
+              help="Comma-separated sample names.")
+@click.option("--samples-file", default=None, type=click.Path(exists=True, dir_okay=False),
+              help="File with one sample name per line.")
+@click.option("--min-call-rate", default=0.8, show_default=True, type=float,
+              help="Minimum genotype call rate.")
+@click.option("--min-an", default=2, show_default=True, type=int,
+              help="Minimum allele number (AN).")
+def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
+        keep_multiallelic, include_stop_codons, window_size, window_step,
+        threads, quiet, samples, samples_file, min_call_rate, min_an):
+    """Run individual-sequencing piN/piS analysis (genotype based).
+
+    \b
+    Examples:
+      # All samples in VCF:
+      pie run ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/
+
+    \b
+      # Subset of samples:
+      pie run ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ \\
+          -S sampleA,sampleB,sampleC
+
+    \b
+      # Samples from a file:
+      pie run ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ \\
+          --samples-file sample_list.txt --min-call-rate 0.9
+    """
+    # --- Individual-mode specific validation ---
+    if samples is not None and samples_file is not None:
+        click.echo(
+            "Error: --samples and --samples-file are mutually exclusive.",
+            err=True,
+        )
+        sys.exit(1)
+
+    if not (0.0 <= min_call_rate <= 1.0):
+        click.echo(
+            f"Error: --min-call-rate must be between 0 and 1, got {min_call_rate}",
+            err=True,
+        )
+        sys.exit(1)
+
+    # Resolve samples from file
+    resolved_samples = samples
+    if samples_file is not None:
+        with open(samples_file) as fh:
+            resolved_samples = ",".join(line.strip() for line in fh if line.strip())
+
+    _run_analysis(
+        vcf=vcf, gff=gff, fasta=fasta, outdir=outdir, mode="individual",
+        min_freq=min_freq, min_depth=0, min_qual=min_qual,
+        pass_only=pass_only, keep_multiallelic=keep_multiallelic,
+        include_stop_codons=include_stop_codons, window_size=window_size,
+        window_step=window_step, threads=threads, quiet=quiet,
+        samples=resolved_samples, min_call_rate=min_call_rate, min_an=min_an,
+    )
+
+
+# ---------------------------------------------------------------------------
+# pie plot (group + subcommands)
+# ---------------------------------------------------------------------------
 
 @main.group(invoke_without_command=True, no_args_is_help=True, context_settings=_HELP_OPTS)
 def plot():
@@ -477,6 +501,10 @@ def sliding_window(input_path, output_path, width, height, dpi,
                          max_ratio=max_ratio)
     click.echo(f"Plot saved to {output_path}")
 
+
+# ---------------------------------------------------------------------------
+# pie summary
+# ---------------------------------------------------------------------------
 
 @main.command(context_settings=_HELP_OPTS)
 @click.argument("summary_file")
