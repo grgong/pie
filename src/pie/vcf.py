@@ -323,6 +323,10 @@ class IndividualVariantReader(_BaseVariantReader):
     Derives pooled allele frequencies from genotype fields across selected
     diploid samples.  Exposes the same ``fetch()`` interface as
     ``VariantReader`` so downstream code is unchanged.
+
+    Note: Only diploid genotypes are supported.  Haploid calls (e.g. male
+    sex-chromosome genotypes represented as ``[allele, -2]`` in cyvcf2) are
+    treated as uncalled and silently skipped.
     """
 
     def __init__(self, vcf_path: str, samples: list[str] | None = None,
