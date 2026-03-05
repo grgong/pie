@@ -17,7 +17,7 @@ from pie.cli import main
 class TestEndToEnd:
     def _run_analysis(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path, min_qual=0):
         result = runner.invoke(main, [
-            "run", "pool",
+            "pool",
             "--vcf", vcf_file,
             "--gff", gff3_file,
             "--fasta", ref_fasta,
@@ -134,7 +134,7 @@ class TestEndToEnd:
     def test_keep_multiallelic_flag(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         """--keep-multiallelic flag is accepted and does not break pipeline."""
         result = runner.invoke(main, [
-            "run", "pool",
+            "pool",
             "--vcf", vcf_file,
             "--gff", gff3_file,
             "--fasta", ref_fasta,
@@ -150,7 +150,7 @@ class TestEndToEnd:
     def test_gtf_also_works(self, runner, ref_fasta, gtf_file, vcf_file, tmp_path):
         """GTF should produce same results as GFF3."""
         result = runner.invoke(main, [
-            "run", "pool", "--vcf", vcf_file, "--gff", gtf_file, "--fasta", ref_fasta,
+            "pool", "--vcf", vcf_file, "--gff", gtf_file, "--fasta", ref_fasta,
             "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
         assert result.exit_code == 0
@@ -169,7 +169,7 @@ class TestCrossFormat:
 
         for gff, outdir in [(gff3_file, gff_out), (gtf_file, gtf_out)]:
             result = runner.invoke(main, [
-                "run", "pool", "--vcf", vcf_file, "--gff", gff, "--fasta", ref_fasta,
+                "pool", "--vcf", vcf_file, "--gff", gff, "--fasta", ref_fasta,
                 "--outdir", str(outdir), "--min-freq", "0", "--min-depth", "0",
                 "--min-qual", "0",
             ])
@@ -191,7 +191,7 @@ class TestIndividualMode:
     def _run_individual(self, runner, ref_fasta, gff3_file, individual_vcf_file,
                         tmp_path, min_qual=0, min_call_rate=0):
         result = runner.invoke(main, [
-            "run", "ind",
+            "ind",
             "--vcf", individual_vcf_file,
             "--gff", gff3_file,
             "--fasta", ref_fasta,

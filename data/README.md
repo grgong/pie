@@ -23,7 +23,7 @@ tar xzf data/Acyrthosiphon_pisum.tar.gz -C data/
 ### Run pie on this dataset
 
 ```bash
-pie run \
+pie pool \
   --vcf data/Acyrthosiphon_pisum/SRR27175631.filtered.snps.vcf.gz \
   --gff data/Acyrthosiphon_pisum/Acyrthosiphon_pisum.gff \
   --fasta data/Acyrthosiphon_pisum/Acyrthosiphon_pisum.fa \

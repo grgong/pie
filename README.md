@@ -10,11 +10,11 @@ genomes.
 
 Two analysis modes:
 
-- **Pool mode** (default): Derives allele frequencies from AD (allele
+- **Pool mode** (`pie pool`): Derives allele frequencies from AD (allele
   depth) fields in pool-seq VCFs.
-- **Individual mode**: Derives allele frequencies from GT (genotype)
-  fields across multiple diploid samples — a site-frequency based
-  approximation consistent with pairwise diversity under the model
+- **Individual mode** (`pie ind`): Derives allele frequencies from GT
+  (genotype) fields across multiple diploid samples — a site-frequency
+  based approximation consistent with pairwise diversity under the model
   assumptions.
 
 ## Comparison with SNPGenie
@@ -90,21 +90,21 @@ pandas, plotnine, click.
 
 ```bash
 # Pool-seq mode
-pie run pool -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
+pie pool -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
 
 # Pool-seq with stricter filters
-pie run pool -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+pie pool -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
   -d 20 -q 30 --pass-only -t 8
 
 # Individual-sequencing mode (all samples)
-pie run ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
+pie ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
 
 # Individual mode with selected samples
-pie run ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+pie ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
   -S S1,S2,S3
 
 # Individual mode with sample list file
-pie run ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+pie ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
   --samples-file samples.txt --min-call-rate 0.9
 
 # View summary
@@ -135,16 +135,12 @@ mode, allele frequencies are derived from GT (genotype) fields:
 
 All commands support `-h`/`--help`.  Use `pie -V` to print the version.
 
-### `pie run`
-
-Run the piN/piS analysis.  Two subcommands select the analysis mode:
-
-#### `pie run pool`
+### `pie pool`
 
 Pool-seq mode (allele-frequency based).
 
 ```
-pie run pool -v FILE -g FILE -f FILE -o DIR [OPTIONS]
+pie pool -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 ```
 
 **Shared options** (available in both `pool` and `ind`):
@@ -171,12 +167,12 @@ pie run pool -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 | `--min-depth` | `-d` | 10 | Minimum read depth at variant site |
 | `--sample` | `-s` | — | Sample name to analyse (required for multi-sample VCFs) |
 
-#### `pie run ind`
+### `pie ind`
 
 Individual-sequencing mode (genotype based).
 
 ```
-pie run ind -v FILE -g FILE -f FILE -o DIR [OPTIONS]
+pie ind -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 ```
 
 **Individual-only options** (plus all shared options above):
@@ -284,7 +280,7 @@ more samples, `pie` will abort and list the available sample names. Use
 `--sample` to select one:
 
 ```bash
-pie run pool -v multi.vcf.gz -g genes.gff3 -f ref.fa -o results/ -s pool_A
+pie pool -v multi.vcf.gz -g genes.gff3 -f ref.fa -o results/ -s pool_A
 ```
 
 When `--sample` is given, output files are prefixed with the sample name
@@ -294,7 +290,7 @@ produce unprefixed filenames as before.
 
 ### Individual mode
 
-In individual mode (`pie run ind`), `pie` uses all samples in the VCF
+In individual mode (`pie ind`), `pie` uses all samples in the VCF
 by default. Use `--samples` (comma-separated) or `--samples-file` (one name
 per line) to select a subset. See the [Quick start](#quick-start) for
 examples.
