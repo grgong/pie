@@ -87,11 +87,7 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
             click.echo(f"Error: {name} file not found: {path}", err=True)
             sys.exit(1)
 
-    # Ensure VCF is indexed (bgzip + tabix if needed) before any reads
-    vcf = ensure_indexed(vcf)
-    log.info("VCF ready: %s", vcf)
-
-    # --- Resolve sample list ---
+    # --- Resolve and validate samples before any filesystem mutations ---
     vcf_samples = get_sample_names(vcf)
     selected_samples = None
 
@@ -142,6 +138,10 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
                 )
                 sys.exit(1)
             log.info("Using %d samples: %s", len(selected_samples), ", ".join(selected_samples))
+
+    # Ensure VCF is indexed (bgzip + tabix if needed) — only after validation
+    vcf = ensure_indexed(vcf)
+    log.info("VCF ready: %s", vcf)
 
     # Create output directory
     os.makedirs(outdir, exist_ok=True)
