@@ -1,20 +1,9 @@
 from pie.cli import main
 
 
-class TestRunCommand:
-    def test_run_group_help(self, runner):
-        result = runner.invoke(main, ["run", "--help"])
-        assert result.exit_code == 0
-        assert "pool" in result.output
-        assert "ind" in result.output
-
-    def test_run_no_subcommand_shows_help(self, runner):
-        result = runner.invoke(main, ["run"])
-        assert "pool" in result.output
-        assert "ind" in result.output
-
+class TestPoolCommand:
     def test_pool_help(self, runner):
-        result = runner.invoke(main, ["run", "pool", "--help"])
+        result = runner.invoke(main, ["pool", "--help"])
         assert result.exit_code == 0
         assert "--vcf" in result.output
         assert "--gff" in result.output
@@ -22,22 +11,13 @@ class TestRunCommand:
         assert "--min-depth" in result.output
         assert "--sample" in result.output
 
-    def test_ind_help(self, runner):
-        result = runner.invoke(main, ["run", "ind", "--help"])
-        assert result.exit_code == 0
-        assert "--vcf" in result.output
-        assert "--samples" in result.output
-        assert "--samples-file" in result.output
-        assert "--min-call-rate" in result.output
-        assert "--min-an" in result.output
-
     def test_pool_missing_required(self, runner):
-        result = runner.invoke(main, ["run", "pool"])
+        result = runner.invoke(main, ["pool"])
         assert result.exit_code != 0
 
     def test_full_run_pool(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         result = runner.invoke(main, [
-            "run", "pool",
+            "pool",
             "--vcf", vcf_file,
             "--gff", gff3_file,
             "--fasta", ref_fasta,
@@ -52,19 +32,19 @@ class TestRunCommand:
         assert (tmp_path / "summary.tsv").exists()
 
     def test_pool_help_shows_keep_multiallelic(self, runner):
-        result = runner.invoke(main, ["run", "pool", "--help"])
+        result = runner.invoke(main, ["pool", "--help"])
         assert result.exit_code == 0
         assert "--keep-multiallelic" in result.output
 
     def test_pool_help_shows_quiet(self, runner):
-        result = runner.invoke(main, ["run", "pool", "--help"])
+        result = runner.invoke(main, ["pool", "--help"])
         assert result.exit_code == 0
         assert "--quiet" in result.output
 
     def test_quiet_flag_runs(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         """--quiet flag is accepted and suppresses INFO messages."""
         result = runner.invoke(main, [
-            "run", "pool",
+            "pool",
             "--vcf", vcf_file,
             "--gff", gff3_file,
             "--fasta", ref_fasta,
@@ -78,14 +58,14 @@ class TestRunCommand:
         assert (tmp_path / "gene_results.tsv").exists()
 
     def test_pool_help_shows_include_stop_codons(self, runner):
-        result = runner.invoke(main, ["run", "pool", "--help"])
+        result = runner.invoke(main, ["pool", "--help"])
         assert result.exit_code == 0
         assert "--include-stop-codons" in result.output
 
     def test_include_stop_codons_flag(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         """--include-stop-codons flag is accepted and runs successfully."""
         result = runner.invoke(main, [
-            "run", "pool",
+            "pool",
             "--vcf", vcf_file,
             "--gff", gff3_file,
             "--fasta", ref_fasta,
@@ -100,7 +80,7 @@ class TestRunCommand:
 
     def test_run_with_threading(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         result = runner.invoke(main, [
-            "run", "pool",
+            "pool",
             "--vcf", vcf_file,
             "--gff", gff3_file,
             "--fasta", ref_fasta,
@@ -139,7 +119,7 @@ class TestPlotCommand:
 
     def _run_pool(self, runner, vcf_file, gff3_file, ref_fasta, tmp_path):
         runner.invoke(main, [
-            "run", "pool", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "pool", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
             "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
 
@@ -235,7 +215,7 @@ class TestSummaryCommand:
 
     def test_print_summary(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         runner.invoke(main, [
-            "run", "pool", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
+            "pool", "--vcf", vcf_file, "--gff", gff3_file, "--fasta", ref_fasta,
             "--outdir", str(tmp_path), "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
         result = runner.invoke(main, ["summary", str(tmp_path / "summary.tsv")])
@@ -244,10 +224,19 @@ class TestSummaryCommand:
 
 
 class TestIndividualMode:
+    def test_ind_help(self, runner):
+        result = runner.invoke(main, ["ind", "--help"])
+        assert result.exit_code == 0
+        assert "--vcf" in result.output
+        assert "--samples" in result.output
+        assert "--samples-file" in result.output
+        assert "--min-call-rate" in result.output
+        assert "--min-an" in result.output
+
     def test_ind_runs(self, runner, ref_fasta, gff3_file, individual_vcf_file, tmp_path):
-        """pie run ind works end-to-end."""
+        """pie ind works end-to-end."""
         result = runner.invoke(main, [
-            "run", "ind",
+            "ind",
             "--vcf", individual_vcf_file,
             "--gff", gff3_file, "--fasta", ref_fasta,
             "--outdir", str(tmp_path),
@@ -260,7 +249,7 @@ class TestIndividualMode:
         sf = tmp_path / "samples.txt"
         sf.write_text("S1\nS2\n")
         result = runner.invoke(main, [
-            "run", "ind",
+            "ind",
             "--samples", "S1,S2", "--samples-file", str(sf),
             "--vcf", individual_vcf_file, "--gff", gff3_file,
             "--fasta", ref_fasta, "--outdir", str(tmp_path),
@@ -270,7 +259,7 @@ class TestIndividualMode:
 
     def test_min_call_rate_out_of_range(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         result = runner.invoke(main, [
-            "run", "ind", "--min-call-rate", "1.5",
+            "ind", "--min-call-rate", "1.5",
             "--vcf", vcf_file, "--gff", gff3_file,
             "--fasta", ref_fasta, "--outdir", str(tmp_path),
         ])
@@ -278,9 +267,9 @@ class TestIndividualMode:
 
     def test_individual_no_samples_uses_all(self, runner, ref_fasta, gff3_file,
                                              individual_vcf_file, tmp_path):
-        """pie run ind without --samples -> uses all samples in VCF."""
+        """pie ind without --samples -> uses all samples in VCF."""
         result = runner.invoke(main, [
-            "run", "ind",
+            "ind",
             "--vcf", individual_vcf_file, "--gff", gff3_file,
             "--fasta", ref_fasta, "--outdir", str(tmp_path),
             "--min-freq", "0", "--min-qual", "0", "--min-call-rate", "0",
@@ -291,7 +280,7 @@ class TestIndividualMode:
                                        individual_vcf_file, tmp_path):
         """--samples with name not in VCF -> error with available names."""
         result = runner.invoke(main, [
-            "run", "ind",
+            "ind",
             "--samples", "S1,NONEXISTENT",
             "--vcf", individual_vcf_file, "--gff", gff3_file,
             "--fasta", ref_fasta, "--outdir", str(tmp_path),
@@ -305,7 +294,7 @@ class TestIndividualMode:
         sf = tmp_path / "samples.txt"
         sf.write_text("S1\nS2\n")
         result = runner.invoke(main, [
-            "run", "ind",
+            "ind",
             "--samples-file", str(sf),
             "--vcf", individual_vcf_file, "--gff", gff3_file,
             "--fasta", ref_fasta, "--outdir", str(tmp_path),

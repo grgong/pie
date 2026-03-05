@@ -35,14 +35,14 @@ def real_results(tmp_path_factory):
     outdir = tmp_path_factory.mktemp("real_results")
     runner = CliRunner()
     result = runner.invoke(main, [
-        "run", "pool",
+        "pool",
         "--vcf", str(vcf),
         "--gff", str(gff),
         "--fasta", str(ref),
         "--outdir", str(outdir),
         "--window-size", "0",
     ])
-    assert result.exit_code == 0, f"pie run failed:\n{result.output}"
+    assert result.exit_code == 0, f"pie pool failed:\n{result.output}"
 
     gene_df = pd.read_csv(outdir / "gene_results.tsv", sep="\t")
     summary_df = pd.read_csv(outdir / "summary.tsv", sep="\t")
@@ -60,7 +60,7 @@ def real_results_keep_multiallelic(tmp_path_factory):
     outdir = tmp_path_factory.mktemp("real_results_keep_multi")
     runner = CliRunner()
     result = runner.invoke(main, [
-        "run", "pool",
+        "pool",
         "--vcf", str(vcf),
         "--gff", str(gff),
         "--fasta", str(ref),
@@ -68,7 +68,7 @@ def real_results_keep_multiallelic(tmp_path_factory):
         "--window-size", "0",
         "--keep-multiallelic",
     ])
-    assert result.exit_code == 0, f"pie run --keep-multiallelic failed:\n{result.output}"
+    assert result.exit_code == 0, f"pie pool --keep-multiallelic failed:\n{result.output}"
 
     gene_df = pd.read_csv(outdir / "gene_results.tsv", sep="\t")
     summary_df = pd.read_csv(outdir / "summary.tsv", sep="\t")

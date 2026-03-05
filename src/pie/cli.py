@@ -24,8 +24,8 @@ def main():
 
     \b
     Quick start:
-      pie run pool -v variants.vcf.gz -g genes.gff3 -f ref.fa -o results/
-      pie run ind  -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o results/
+      pie pool -v variants.vcf.gz -g genes.gff3 -f ref.fa -o results/
+      pie ind  -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o results/
       pie plot manhattan -i results/gene_results.tsv -o manhattan.png
       pie summary results/summary.tsv
 
@@ -182,31 +182,10 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
 
 
 # ---------------------------------------------------------------------------
-# pie run (group)
+# pie pool
 # ---------------------------------------------------------------------------
 
-@main.group(invoke_without_command=True, no_args_is_help=True, context_settings=_HELP_OPTS)
-def run():
-    """Run piN/piS analysis.
-
-    \b
-    Subcommands:
-      pool  — allele-frequency based (pool-seq / single-sample VCF)
-      ind   — genotype based (multi-sample VCF with GT fields)
-
-    \b
-    Outputs (written to --outdir):
-      gene_results.tsv    Per-gene piN, piS, piN/piS, and site counts
-      window_results.tsv  Sliding-window piN/piS along each chromosome
-      summary.tsv         Genome-wide weighted-average statistics
-    """
-
-
-# ---------------------------------------------------------------------------
-# pie run pool
-# ---------------------------------------------------------------------------
-
-@run.command(no_args_is_help=True, context_settings=_HELP_OPTS)
+@main.command(no_args_is_help=True, context_settings=_HELP_OPTS)
 @_shared_run_options
 @click.option("-d", "--min-depth", default=10, show_default=True, type=int,
               help="Minimum read depth.")
@@ -220,16 +199,16 @@ def pool(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
     \b
     Examples:
       # Basic usage:
-      pie run pool -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/
+      pie pool -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/
 
     \b
       # Stricter filters and 8 threads:
-      pie run pool -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/ \\
+      pie pool -v pool.vcf.gz -g genes.gff3 -f ref.fa -o results/ \\
           -d 20 -q 30 --pass-only -t 8
 
     \b
       # Multi-sample pool VCF — select one sample:
-      pie run pool -v multi.vcf.gz -g genes.gff3 -f ref.fa -o out/ -s SampleA
+      pie pool -v multi.vcf.gz -g genes.gff3 -f ref.fa -o out/ -s SampleA
     """
     _run_analysis(
         vcf=vcf, gff=gff, fasta=fasta, outdir=outdir, mode="pool",
@@ -241,10 +220,10 @@ def pool(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
 
 
 # ---------------------------------------------------------------------------
-# pie run ind
+# pie ind
 # ---------------------------------------------------------------------------
 
-@run.command(no_args_is_help=True, context_settings=_HELP_OPTS)
+@main.command(no_args_is_help=True, context_settings=_HELP_OPTS)
 @_shared_run_options
 @click.option("-S", "--samples", default=None,
               help="Comma-separated sample names.")
@@ -262,16 +241,16 @@ def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
     \b
     Examples:
       # All samples in VCF:
-      pie run ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/
+      pie ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/
 
     \b
       # Subset of samples:
-      pie run ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ \\
+      pie ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ \\
           -S sampleA,sampleB,sampleC
 
     \b
       # Samples from a file:
-      pie run ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ \\
+      pie ind -v gatk.vcf.gz -g genes.gff3 -f ref.fa -o out/ \\
           --samples-file sample_list.txt --min-call-rate 0.9
     """
     # --- Individual-mode specific validation ---
@@ -476,7 +455,7 @@ def sliding_window(input_path, output_path, width, height, dpi,
 
     \b
     Line plot of piN/piS along genomic coordinates, faceted by chromosome.
-    Input should be window_results.tsv from 'pie run'.
+    Input should be window_results.tsv from 'pie pool' or 'pie ind'.
 
     \b
     Examples:
@@ -504,7 +483,7 @@ def summary(summary_file):
 
     \b
     Display genome-wide weighted-average piN, piS, and piN/piS from a
-    summary file produced by 'pie run'.
+    summary file produced by 'pie pool' or 'pie ind'.
 
     \b
     Examples:
