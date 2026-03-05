@@ -89,24 +89,23 @@ pandas, plotnine, click.
 ## Quick start
 
 ```bash
-# Pool-seq mode (default)
-pie run -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
+# Pool-seq mode
+pie run pool -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
 
 # Pool-seq with stricter filters
-pie run -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+pie run pool -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
   -d 20 -q 30 --pass-only -t 8
 
 # Individual-sequencing mode (all samples)
-pie run -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
-  -m individual -t 8
+pie run ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ -t 8
 
 # Individual mode with selected samples
-pie run -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
-  -m ind -S S1,S2,S3
+pie run ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+  -S S1,S2,S3
 
 # Individual mode with sample list file
-pie run -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
-  -m ind --samples-file samples.txt --min-call-rate 0.9
+pie run ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
+  --samples-file samples.txt --min-call-rate 0.9
 
 # View summary
 pie summary results/summary.tsv
@@ -138,11 +137,17 @@ All commands support `-h`/`--help`.  Use `pie -V` to print the version.
 
 ### `pie run`
 
-Run the piN/piS analysis.
+Run the piN/piS analysis.  Two subcommands select the analysis mode:
+
+#### `pie run pool`
+
+Pool-seq mode (allele-frequency based).
 
 ```
-pie run -v FILE -g FILE -f FILE -o DIR [OPTIONS]
+pie run pool -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 ```
+
+**Shared options** (available in both `pool` and `ind`):
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
@@ -150,9 +155,7 @@ pie run -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 | `--gff` | `-g` | required | GFF3 or GTF annotation file |
 | `--fasta` | `-f` | required | Reference FASTA file (indexed) |
 | `--outdir` | `-o` | required | Output directory (created if absent) |
-| `--mode` | `-m` | pool | Analysis mode: `pool` or `individual` (alias `ind`) |
 | `--min-freq` | | 0.01 | Minimum alt allele frequency |
-| `--min-depth` | `-d` | 10 | Minimum read depth at variant site (pool mode only) |
 | `--min-qual` | `-q` | 20.0 | Minimum variant QUAL score |
 | `--pass-only` | | off | Only use PASS-filtered variants |
 | `--keep-multiallelic` | | off | Keep and merge multiallelic sites instead of skipping them |
@@ -160,11 +163,30 @@ pie run -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 | `--window-size` | `-w` | 1000 | Sliding window size in bp |
 | `--window-step` | `-W` | 100 | Sliding window step in bp |
 | `--threads` | `-t` | 1 | Number of parallel worker processes |
-| `--sample` | `-s` | — | Sample name to analyse (pool mode only; required for multi-sample VCFs) |
-| `--samples` | `-S` | all | Comma-separated sample names (individual mode only; defaults to all VCF samples) |
-| `--samples-file` | | — | File with one sample name per line (individual mode only; mutually exclusive with `--samples`) |
-| `--min-call-rate` | | 0.8 | Minimum genotype call rate per site (individual mode only; range 0–1) |
-| `--min-an` | | 2 | Minimum allele number (AN) per site (individual mode only) |
+
+**Pool-only options:**
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--min-depth` | `-d` | 10 | Minimum read depth at variant site |
+| `--sample` | `-s` | — | Sample name to analyse (required for multi-sample VCFs) |
+
+#### `pie run ind`
+
+Individual-sequencing mode (genotype based).
+
+```
+pie run ind -v FILE -g FILE -f FILE -o DIR [OPTIONS]
+```
+
+**Individual-only options** (plus all shared options above):
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--samples` | `-S` | all | Comma-separated sample names (defaults to all VCF samples) |
+| `--samples-file` | | — | File with one sample name per line (mutually exclusive with `--samples`) |
+| `--min-call-rate` | | 0.8 | Minimum genotype call rate per site (range 0–1) |
+| `--min-an` | | 2 | Minimum allele number (AN) per site |
 
 ### `pie plot`
 
@@ -262,7 +284,7 @@ more samples, `pie` will abort and list the available sample names. Use
 `--sample` to select one:
 
 ```bash
-pie run -v multi.vcf.gz -g genes.gff3 -f ref.fa -o results/ -s pool_A
+pie run pool -v multi.vcf.gz -g genes.gff3 -f ref.fa -o results/ -s pool_A
 ```
 
 When `--sample` is given, output files are prefixed with the sample name
@@ -272,7 +294,7 @@ produce unprefixed filenames as before.
 
 ### Individual mode
 
-In individual mode (`--mode individual`), `pie` uses all samples in the VCF
+In individual mode (`pie run ind`), `pie` uses all samples in the VCF
 by default. Use `--samples` (comma-separated) or `--samples-file` (one name
 per line) to select a subset. See the [Quick start](#quick-start) for
 examples.

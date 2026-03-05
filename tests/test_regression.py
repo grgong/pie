@@ -35,7 +35,7 @@ def real_results(tmp_path_factory):
     outdir = tmp_path_factory.mktemp("real_results")
     runner = CliRunner()
     result = runner.invoke(main, [
-        "run",
+        "run", "pool",
         "--vcf", str(vcf),
         "--gff", str(gff),
         "--fasta", str(ref),
@@ -60,7 +60,7 @@ def real_results_keep_multiallelic(tmp_path_factory):
     outdir = tmp_path_factory.mktemp("real_results_keep_multi")
     runner = CliRunner()
     result = runner.invoke(main, [
-        "run",
+        "run", "pool",
         "--vcf", str(vcf),
         "--gff", str(gff),
         "--fasta", str(ref),

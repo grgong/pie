@@ -38,7 +38,7 @@ class TestNoGenesFoundError:
             chr1\ttest\tmRNA\t1\t90\t.\t+\t.\tID=mRNA1;Parent=gene1
         """))
         result = runner.invoke(main, [
-            "run", "--vcf", vcf_file, "--gff", str(gff_no_cds),
+            "run", "pool", "--vcf", vcf_file, "--gff", str(gff_no_cds),
             "--fasta", ref_fasta, "--outdir", str(tmp_path / "out"),
             "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
@@ -51,7 +51,7 @@ class TestNoGenesFoundError:
         gff_empty = tmp_path / "empty.gff3"
         gff_empty.write_text("##gff-version 3\n")
         result = runner.invoke(main, [
-            "run", "--vcf", vcf_file, "--gff", str(gff_empty),
+            "run", "pool", "--vcf", vcf_file, "--gff", str(gff_empty),
             "--fasta", ref_fasta, "--outdir", str(tmp_path / "out"),
             "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
@@ -123,7 +123,7 @@ class TestZeroSharedContigs:
         vcf_gz = bgzip_and_index(vcf_wrong)
 
         result = runner.invoke(main, [
-            "run", "--vcf", vcf_gz, "--gff", gff3_file,
+            "run", "pool", "--vcf", vcf_gz, "--gff", gff3_file,
             "--fasta", ref_fasta, "--outdir", str(tmp_path / "out"),
             "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
@@ -197,7 +197,7 @@ class TestPartialContigMismatch:
         ref_path, gff_path, vcf_gz = two_contig_data
         outdir = tmp_path / "out"
         result = runner.invoke(main, [
-            "run", "--vcf", vcf_gz, "--gff", gff_path,
+            "run", "pool", "--vcf", vcf_gz, "--gff", gff_path,
             "--fasta", ref_path, "--outdir", str(outdir),
             "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
@@ -248,7 +248,7 @@ class TestAmbiguousReferenceCodon:
         ref_path = write_fasta(tmp_path / "ref_with_n.fa", {"chr1": seq})
 
         result = runner.invoke(main, [
-            "run", "--vcf", empty_vcf, "--gff", gff_one_gene,
+            "run", "pool", "--vcf", empty_vcf, "--gff", gff_one_gene,
             "--fasta", ref_path, "--outdir", str(tmp_path / "out"),
             "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
@@ -292,7 +292,7 @@ class TestCdsSnpVariantsColumn:
                                                   tmp_path):
         """summary.tsv should have cds_snp_variants, not total_variants."""
         result = runner.invoke(main, [
-            "run", "--vcf", vcf_file, "--gff", gff3_file,
+            "run", "pool", "--vcf", vcf_file, "--gff", gff3_file,
             "--fasta", ref_fasta, "--outdir", str(tmp_path),
             "--min-freq", "0", "--min-depth", "0", "--min-qual", "0",
         ])
