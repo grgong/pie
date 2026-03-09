@@ -15,9 +15,13 @@ from pie.codon import (
     N_DIFFS,
     N_SITES,
     N_SITES_EXCL_STOP,
+    N_SITES_EXCL_STOP_SUM,
+    N_SITES_SUM,
     S_DIFFS,
     S_SITES,
     S_SITES_EXCL_STOP,
+    S_SITES_EXCL_STOP_SUM,
+    S_SITES_SUM,
     is_stop_codon,
 )
 from typing import Protocol
@@ -338,14 +342,13 @@ def compute_gene_diversity(
         all_variants.extend(result.variants)
         gene_filter_stats += result.stats
 
-    # Choose site tables
+    # Choose site tables and precomputed row sums
     if exclude_stops:
         n_sites_tbl, s_sites_tbl = N_SITES_EXCL_STOP, S_SITES_EXCL_STOP
+        n_sites_sum, s_sites_sum = N_SITES_EXCL_STOP_SUM, S_SITES_EXCL_STOP_SUM
     else:
         n_sites_tbl, s_sites_tbl = N_SITES, S_SITES
-    # Precompute per-codon-index site sums (avoids repeated .sum() calls)
-    n_sites_sum = n_sites_tbl.sum(axis=1)
-    s_sites_sum = s_sites_tbl.sum(axis=1)
+        n_sites_sum, s_sites_sum = N_SITES_SUM, S_SITES_SUM
 
     # --- Identify codons hit by at least one variant ---
     # Only these need the full freq_array + diversity computation;
@@ -361,6 +364,8 @@ def compute_gene_diversity(
             hit_positions.append(positions[i])
 
     # Build allele frequency array only for variant-hit codons
+    freq_array = None
+    poly_mask = None
     if hit_codons:
         freq_array = build_allele_freq_array(
             hit_codons, hit_positions, all_variants, gene.strand)
