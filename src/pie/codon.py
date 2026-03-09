@@ -115,6 +115,17 @@ N_SITES, S_SITES = _build_site_tables(exclude_stops=False)
 # Exclude mutations to stop codons (default, matches NG86/SNPGenie)
 N_SITES_EXCL_STOP, S_SITES_EXCL_STOP = _build_site_tables(exclude_stops=True)
 
+# Precomputed per-codon site count sums (shape (64,)) — avoids repeated
+# .sum(axis=1) calls in the hot loop of compute_gene_diversity.
+N_SITES_SUM: np.ndarray = N_SITES.sum(axis=1)
+S_SITES_SUM: np.ndarray = S_SITES.sum(axis=1)
+N_SITES_EXCL_STOP_SUM: np.ndarray = N_SITES_EXCL_STOP.sum(axis=1)
+S_SITES_EXCL_STOP_SUM: np.ndarray = S_SITES_EXCL_STOP.sum(axis=1)
+N_SITES_SUM.flags.writeable = False
+S_SITES_SUM.flags.writeable = False
+N_SITES_EXCL_STOP_SUM.flags.writeable = False
+S_SITES_EXCL_STOP_SUM.flags.writeable = False
+
 # ---------------------------------------------------------------------------
 # 4. N_DIFFS / S_DIFFS — pairwise differences
 # ---------------------------------------------------------------------------
