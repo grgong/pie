@@ -338,17 +338,33 @@ def compute_gene_diversity(
         all_variants.extend(result.variants)
         gene_filter_stats += result.stats
 
-    # Build allele frequency array
-    freq_array = build_allele_freq_array(codons, positions, all_variants, gene.strand)
-
     # Choose site tables
     if exclude_stops:
         n_sites_tbl, s_sites_tbl = N_SITES_EXCL_STOP, S_SITES_EXCL_STOP
     else:
         n_sites_tbl, s_sites_tbl = N_SITES, S_SITES
+    # Precompute per-codon-index site sums (avoids repeated .sum() calls)
+    n_sites_sum = n_sites_tbl.sum(axis=1)
+    s_sites_sum = s_sites_tbl.sum(axis=1)
 
-    # Identify polymorphic codons: any position with >1 allele having freq > 0
-    poly_mask = (freq_array > 0).sum(axis=2).max(axis=1) > 1
+    # --- Identify codons hit by at least one variant ---
+    # Only these need the full freq_array + diversity computation;
+    # the remaining ~98% use reference codon site counts directly.
+    variant_positions = {v.pos for v in all_variants}
+    hit_codon_map: dict[int, int] = {}
+    hit_codons: list[str] = []
+    hit_positions: list[tuple[str, int, int, int]] = []
+    for i, (_, p1, p2, p3) in enumerate(positions):
+        if p1 in variant_positions or p2 in variant_positions or p3 in variant_positions:
+            hit_codon_map[i] = len(hit_codons)
+            hit_codons.append(codons[i])
+            hit_positions.append(positions[i])
+
+    # Build allele frequency array only for variant-hit codons
+    if hit_codons:
+        freq_array = build_allele_freq_array(
+            hit_codons, hit_positions, all_variants, gene.strand)
+        poly_mask = (freq_array > 0).sum(axis=2).max(axis=1) > 1
 
     # Accumulate results
     total_N_sites = 0.0
@@ -373,40 +389,38 @@ def compute_gene_diversity(
         pos1 = positions[i][1]
         n_codons_analyzed += 1
 
-        if poly_mask[i]:
+        j = hit_codon_map.get(i)
+        if j is not None and poly_mask[j]:
             # Full diversity computation for polymorphic codons
             n_poly += 1
-            result = compute_codon_diversity(freq_array[i], exclude_stops=exclude_stops)
-            if exclude_stops and result.get("_stop_freq", 0.0) > 0.01:
+            div = compute_codon_diversity(freq_array[j], exclude_stops=exclude_stops)
+            if exclude_stops and div.get("_stop_freq", 0.0) > 0.01:
                 n_stop_warn += 1
             cr = CodonResult(
-                chrom=chrom,
-                pos1=pos1,
-                N_sites=result["N_sites"],
-                S_sites=result["S_sites"],
-                N_diffs=result["N_diffs"],
-                S_diffs=result["S_diffs"],
+                chrom=chrom, pos1=pos1,
+                N_sites=div["N_sites"], S_sites=div["S_sites"],
+                N_diffs=div["N_diffs"], S_diffs=div["S_diffs"],
             )
         else:
-            # Monomorphic: only site counts, diffs = 0.
-            # Derive the actual codon from freq_array (may differ from
-            # reference when the population is fixed for an alternate allele).
-            actual_idx = _monomorphic_codon_index(freq_array[i])
-            if actual_idx is None:
-                actual_idx = idx  # fall back to reference
+            # Monomorphic codon: only site counts, diffs = 0.
+            if j is not None:
+                # Variant-hit but monomorphic (population fixed for alt allele)
+                actual_idx = _monomorphic_codon_index(freq_array[j])
+                if actual_idx is None:
+                    actual_idx = idx
+            else:
+                # No variant touches this codon — use reference directly
+                actual_idx = idx
             if actual_idx is not None:
-                n_s = float(n_sites_tbl[actual_idx].sum())
-                s_s = float(s_sites_tbl[actual_idx].sum())
+                n_s = float(n_sites_sum[actual_idx])
+                s_s = float(s_sites_sum[actual_idx])
             else:
                 n_s = 0.0
                 s_s = 0.0
             cr = CodonResult(
-                chrom=chrom,
-                pos1=pos1,
-                N_sites=n_s,
-                S_sites=s_s,
-                N_diffs=0.0,
-                S_diffs=0.0,
+                chrom=chrom, pos1=pos1,
+                N_sites=n_s, S_sites=s_s,
+                N_diffs=0.0, S_diffs=0.0,
             )
 
         codon_results.append(cr)
