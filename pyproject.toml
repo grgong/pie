@@ -23,6 +23,9 @@ pie = "pie.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pie"]
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["slow: regression tests using real dataset (~12s)"]

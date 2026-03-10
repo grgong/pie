@@ -75,12 +75,12 @@ pie uses (π = 2p(1−p)). See [benchmark/](benchmark/) for details.
 git clone https://github.com/grgong/pie.git
 cd pie
 
-# Create conda environment
+# Create conda environment (includes editable install of pie)
 mamba env create -f environment.yml
-
-# Activate and install
 mamba activate pie
-pip install -e .
+
+# For development (adds pytest)
+pip install -e ".[dev]"
 ```
 
 Requires Python >= 3.12. Key dependencies: cyvcf2, gffutils, pysam, numpy,
