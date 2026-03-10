@@ -9,7 +9,7 @@ build/
 # Extracted test data (regenerate from .tar.gz)
 data/Acyrthosiphon_pisum/
 
-docs/plans
+docs/plans/
 
 # Cached annotation databases
 *.pie.db
