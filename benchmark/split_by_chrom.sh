@@ -6,6 +6,10 @@ BENCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$(dirname "$BENCH_DIR")/data/Acyrthosiphon_pisum"
 SNPGENIE_DIR="$BENCH_DIR/snpgenie_input"
 
+source /work/user/ggong/miniforge3/etc/profile.d/conda.sh
+source /work/user/ggong/miniforge3/etc/profile.d/mamba.sh
+mamba activate pie
+
 mkdir -p "$SNPGENIE_DIR"
 
 FASTA="$DATA_DIR/Acyrthosiphon_pisum.fa"

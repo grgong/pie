@@ -16,23 +16,23 @@ Performance comparison between pie and [SNPGenie](https://github.com/chasewnelso
 
 ## Results
 
-3 replicates per condition, login node with 8 CPUs. "Cold" = annotation DB rebuilt each run; "warm" = cached `.pie.db` reused.
+3 replicates per condition, login node with 8 CPUs. "Cold" = annotation DB rebuilt each run; "warm" = cached `.pie.db` reused. Before benchmarking, reinstall the current checkout into the `pie` conda environment so the `pie` command points at the latest local code.
 
 ### pie vs SNPGenie
 
 | Tool | Threads | Wall time (s) | Speedup |
 |------|--------:|-------------:|--------:|
-| SNPGenie | 1 | 180.2 ± 0.8 | ref |
-| pie cold | 1 | 4.7 ± 0.9 | **38.7x** |
-| pie cold | 2 | 3.7 ± 0.0 | **49.3x** |
-| pie cold | 4 | 3.7 ± 0.0 | **48.4x** |
-| pie cold | 8 | 3.7 ± 0.0 | **48.2x** |
-| pie warm | 1 | 3.0 ± 0.0 | **60.8x** |
-| pie warm | 2 | 2.4 ± 0.0 | **73.7x** |
-| pie warm | 4 | 2.6 ± 0.0 | **70.2x** |
-| pie warm | 8 | 2.6 ± 0.0 | **70.3x** |
+| SNPGenie | 1 | 194.7 ± 0.7 | ref |
+| pie cold | 1 | 3.5 ± 0.3 | **55.4x** |
+| pie cold | 2 | 3.2 ± 0.0 | **60.3x** |
+| pie cold | 4 | 3.3 ± 0.0 | **58.8x** |
+| pie cold | 8 | 3.4 ± 0.0 | **58.1x** |
+| pie warm | 1 | 2.1 ± 0.0 | **92.1x** |
+| pie warm | 2 | 2.0 ± 0.0 | **97.4x** |
+| pie warm | 4 | 2.0 ± 0.0 | **95.9x** |
+| pie warm | 8 | 2.1 ± 0.0 | **91.6x** |
 
-pie is **~39x faster** than SNPGenie single-threaded (cold), or **~61x** with cached annotations (warm).
+pie is **~55x faster** than SNPGenie single-threaded in cold-cache mode, and reaches **~97x** speedup in the best warm-cache configuration (`-t 2`).
 
 ### Optimizations (vs previous pie version)
 
@@ -47,10 +47,10 @@ pie is **~39x faster** than SNPGenie single-threaded (cold), or **~61x** with ca
 
 | Threads | Wall time (s) | Speedup | Efficiency |
 |--------:|-------------:|--------:|-----------:|
-| 1 | 4.7 | 1.00x | 100% |
-| 2 | 3.7 | 1.28x | 64% |
-| 4 | 3.7 | 1.25x | 31% |
-| 8 | 3.7 | 1.25x | 16% |
+| 1 | 3.5 | 1.00x | 100% |
+| 2 | 3.2 | 1.09x | 54% |
+| 4 | 3.3 | 1.06x | 27% |
+| 8 | 3.4 | 1.05x | 13% |
 
 Thread scaling is minimal on this dataset. The serial portion (VCF/GFF parsing, I/O) dominates at this scale (~400 genes). Larger genomes with tens of thousands of genes should benefit more from multi-threading.
 
@@ -62,7 +62,7 @@ Detailed comparison of piN/piS values between pie (`--keep-multiallelic`) and SN
 
 | | piN | piS | piN/piS |
 |---|---|---|---|
-| pie | 0.00101382 | 0.00416695 | 0.243300 |
+| pie | 0.00101384 | 0.00416688 | 0.243309 |
 | SNPGenie | 0.00103617 | 0.00420721 | 0.246284 |
 | Relative diff | **2.2%** | **1.0%** | **1.2%** |
 
@@ -75,9 +75,9 @@ Detailed comparison of piN/piS values between pie (`--keep-multiallelic`) and SN
 | piS | 0.998\* | 0.999 |
 | N_diffs / S_diffs | 0.996 | 0.993 |
 
-\*Excluding one outlier gene (see below).
+\*Excluding `Apisum_003668` (see below).
 
-- Median per-gene relative difference: piN **0.97%**, piS **0.85%**
+- Median per-gene relative difference: piN **0.97%**, piS **0.86%**
 - 84% of genes have piN within 5%; 92% have piS within 5%
 - pie reports slightly lower values due to the absence of Nei correction (see below)
 
@@ -87,7 +87,7 @@ Three factors explain all observed differences between pie and SNPGenie:
 
 #### 1. Multi-allelic site handling (resolved with `--keep-multiallelic`)
 
-pie defaults to skipping positions with >1 ALT allele. The freebayes VCF contains 3.85% multi-allelic sites (mostly `ALT=X,*` with spanning deletions), affecting 4,634 variants in 198 genes. Using `--keep-multiallelic` recovers these sites and reduces the genome-wide piN difference from ~8% to ~1%.
+pie defaults to skipping multi-allelic records unless `--keep-multiallelic` is set. On this dataset, omitting `--keep-multiallelic` filters 149 records across 66 genes in the pie output and increases the matched-gene genome-wide piN difference versus SNPGenie from **2.2%** to **9.3%**. Re-enabling `--keep-multiallelic` restores the closer agreement shown above.
 
 #### 2. Nei (1987) sample-size correction (~1% systematic bias)
 
@@ -104,12 +104,13 @@ Both approaches are standard; the choice depends on whether reads are treated as
 
 #### 3. SNPGenie bug with decomposed multi-allelic VCF records (one outlier gene)
 
-Apisum_003668 shows a 3.5× piS discrepancy (pie=0.018, SNPGenie=0.063). The cause is a single codon (GGG at positions 111787–111789) where freebayes decomposed a 4-allele complex variant into 6 VCF records, all with 0 reference reads. SNPGenie cannot properly handle this input: it produces negative nucleotide counts, S_diffs=17.96 for a single codon (maximum possible is 1.0), and N_sites=16 (maximum for one codon is 3). pie correctly merges the decomposed records and computes the expected synonymous diversity. Excluding this gene, piS Pearson r > 0.999.
+Apisum_003668 shows a 3.5× piS discrepancy (pie=0.018, SNPGenie=0.063). The cause is a single codon (GGG at positions 111787–111789) where freebayes decomposed a 4-allele complex variant into 6 VCF records, all with 0 reference reads. SNPGenie cannot properly handle this input: it produces negative nucleotide counts, S_diffs=17.96 for a single codon (maximum possible is 1.0), and N_sites=16 (maximum for one codon is 3). pie correctly merges the decomposed records and computes the expected synonymous diversity. Excluding this gene, piS Pearson r = 0.9981.
 
 ## Notes
 
 - SNPGenie requires single-sequence FASTA, so it was run separately per chromosome (total wall time summed).
 - `prepare_snpgenie_input.py` uses pie's annotation parser (`pie.annotation.parse_annotations`) to select the longest isoform per gene, ensuring both tools use the exact same gene models.
+- `recompute_concordance.py` recomputes the matched-gene concordance metrics directly from `pie` `gene_results.tsv` and SNPGenie `product_results.txt` / `codon_results.txt`.
 - Both tools used `--minfreq 0.01`.
 - pie was run with `--keep-multiallelic` to include multi-allelic sites.
 - Performance numbers include `--keep-multiallelic`.
@@ -117,14 +118,36 @@ Apisum_003668 shows a 3.5× piS discrepancy (pie=0.018, SNPGenie=0.063). The cau
 ## Reproduce
 
 ```bash
+# Reinstall current checkout into the pie environment
+mamba run -n pie python -m pip install -e . --force-reinstall
+
 # Prepare SNPGenie-compatible input (split by chromosome, GFF3→GTF)
-python benchmark/prepare_snpgenie_input.py \
+mamba run -n pie python benchmark/prepare_snpgenie_input.py \
   data/Acyrthosiphon_pisum/Acyrthosiphon_pisum.gff \
   benchmark/Acyrthosiphon_pisum.gtf
 bash benchmark/split_by_chrom.sh
 
 # Run on login node (1–2 threads)
 BENCH_THREADS="1 2" REPS=3 bash benchmark/run_benchmark.sh
+
+# Generate a no-keep control for the multi-allelic comparison
+mamba run -n pie pie pool \
+  --vcf data/Acyrthosiphon_pisum/SRR27175631.filtered.snps.vcf.gz \
+  --gff data/Acyrthosiphon_pisum/Acyrthosiphon_pisum.gff \
+  --fasta data/Acyrthosiphon_pisum/Acyrthosiphon_pisum.fa \
+  --outdir benchmark/pie_nokeep_concordance \
+  --threads 1 \
+  --min-freq 0.01 \
+  --quiet
+
+# Recompute concordance metrics from the freshly generated outputs
+mamba run -n pie python benchmark/recompute_concordance.py \
+  --pie-gene-results benchmark/pie_warm_t1_rep1/gene_results.tsv \
+  --snpgenie-root benchmark/snpgenie_work \
+  --rep 1 \
+  --pie-gene-results-no-keep benchmark/pie_nokeep_concordance/gene_results.tsv \
+  --vcf benchmark/SRR27175631.filtered.snps.vcf \
+  --output-json benchmark/concordance_metrics.json
 
 # Or submit to SLURM for more threads (1–8)
 sbatch benchmark/run_benchmark.sbatch

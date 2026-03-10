@@ -1,0 +1,125 @@
+{
+  "matched_genes": 210,
+  "genome": {
+    "pie": {
+      "piN": 0.001013837718521156,
+      "piS": 0.0041668758162064,
+      "piN_piS": 0.24330883934145475
+    },
+    "snpgenie": {
+      "piN": 0.0010361680145341738,
+      "piS": 0.004207212343514181,
+      "piN_piS": 0.24628374560925734
+    },
+    "relative_diff_percent": {
+      "piN": 2.155084474698511,
+      "piS": 0.9587471231387588,
+      "piN_piS": 1.207918232867238
+    }
+  },
+  "per_gene": {
+    "site_counts": {
+      "N_sites": {
+        "pearson": 0.9999998382165294,
+        "spearman": 0.9999776476736125
+      },
+      "S_sites": {
+        "pearson": 0.9999997311622444,
+        "spearman": 0.9999695489749666
+      }
+    },
+    "piN": {
+      "pearson": 0.9957548358038302,
+      "spearman": 0.9931910369909468
+    },
+    "piS": {
+      "pearson_excluding_outlier": 0.9981352905218212,
+      "spearman_excluding_outlier": 0.9986536212687
+    },
+    "N_diffs_S_diffs": {
+      "pearson": 0.9962443625685135,
+      "spearman": 0.9932500131547083
+    },
+    "median_relative_diff_percent": {
+      "piN": 0.9693801229115926,
+      "piS": 0.8570884147974904
+    },
+    "within_5_percent": {
+      "piN": 83.62068965517241,
+      "piS": 92.25352112676056
+    }
+  },
+  "outlier_gene": {
+    "product": "Apisum_003668",
+    "chrom": "3",
+    "pie_piS": 0.0183240739986353,
+    "snpgenie_piS": 0.0632492583662017,
+    "piS_fold_difference": 3.451702845716091,
+    "snpgenie_max_codon": {
+      "site": 111787,
+      "codon": "GGG",
+      "S_diffs": 17.9625251592908,
+      "N_sites": 16.0,
+      "S_sites": 2.0
+    },
+    "vcf_records_at_outlier_codon": [
+      {
+        "pos": 111787,
+        "ref": "G",
+        "alt": "A",
+        "ro": 0,
+        "ao": 65,
+        "dp": 306
+      },
+      {
+        "pos": 111788,
+        "ref": "G",
+        "alt": "A",
+        "ro": 0,
+        "ao": 68,
+        "dp": 306
+      },
+      {
+        "pos": 111788,
+        "ref": "G",
+        "alt": "A",
+        "ro": 0,
+        "ao": 70,
+        "dp": 306
+      },
+      {
+        "pos": 111789,
+        "ref": "G",
+        "alt": "C",
+        "ro": 0,
+        "ao": 103,
+        "dp": 306
+      },
+      {
+        "pos": 111789,
+        "ref": "G",
+        "alt": "T",
+        "ro": 0,
+        "ao": 65,
+        "dp": 306
+      },
+      {
+        "pos": 111789,
+        "ref": "G",
+        "alt": "T",
+        "ro": 0,
+        "ao": 68,
+        "dp": 306
+      }
+    ],
+    "vcf_records_with_zero_ref": 6
+  },
+  "multiallelic_effect": {
+    "genes_with_filtered_multiallelic": 66,
+    "filtered_multiallelic_records": 149,
+    "matched_gene_piN_without_keep": 0.0009398008296359286,
+    "matched_gene_piN_with_keep": 0.001013837718521156,
+    "relative_diff_vs_snpgenie_without_keep_percent": 9.300343529863607,
+    "relative_diff_vs_snpgenie_with_keep_percent": 2.155084474698511
+  }
+}

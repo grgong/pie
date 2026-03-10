@@ -12,8 +12,12 @@ DATA_DIR="$PROJECT_DIR/data/Acyrthosiphon_pisum"
 SNPGENIE="$PROJECT_DIR/../SNPGenie/snpgenie.pl"
 BENCH_DIR="$SCRIPT_DIR"
 
+source /work/user/ggong/miniforge3/etc/profile.d/conda.sh
+source /work/user/ggong/miniforge3/etc/profile.d/mamba.sh
+mamba activate pie
+
 # Thread counts to benchmark for pie (adjust for available cores)
-THREADS=(${BENCH_THREADS:-1 2})
+IFS=' ' read -r -a THREADS <<< "${BENCH_THREADS:-1 2}"
 
 # Number of replicates
 REPS=${REPS:-3}
@@ -108,7 +112,7 @@ for t in "${THREADS[@]}"; do
 
         timefile=$(mktemp)
         /usr/bin/time -f "%e\t%U\t%S" -o "$timefile" \
-            pie run \
+            pie pool \
                 --vcf "$VCF" \
                 --gff "$GFF" \
                 --fasta "$FASTA" \
@@ -134,7 +138,7 @@ done
 if [[ ! -f "$GFF_CACHE" ]]; then
     echo "--- Building annotation cache (warmup) ---"
     warmup_dir=$(mktemp -d)
-    pie run --vcf "$VCF" --gff "$GFF" --fasta "$FASTA" --outdir "$warmup_dir" \
+    pie pool --vcf "$VCF" --gff "$GFF" --fasta "$FASTA" --outdir "$warmup_dir" \
         --threads 1 --min-freq 0.01 --keep-multiallelic > /dev/null 2>&1
     rm -rf "$warmup_dir"
 fi
@@ -147,7 +151,7 @@ for t in "${THREADS[@]}"; do
 
         timefile=$(mktemp)
         /usr/bin/time -f "%e\t%U\t%S" -o "$timefile" \
-            pie run \
+            pie pool \
                 --vcf "$VCF" \
                 --gff "$GFF" \
                 --fasta "$FASTA" \
@@ -174,7 +178,7 @@ echo "Results summary (mean ± sd of $REPS replicates):"
 echo "============================================================"
 echo ""
 
-python3 - "$RESULTS" <<'PYEOF'
+python - "$RESULTS" <<'PYEOF'
 import sys
 from collections import defaultdict
 import math

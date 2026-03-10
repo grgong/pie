@@ -11,7 +11,7 @@ set -euo pipefail
 
 source /work/user/ggong/miniforge3/etc/profile.d/conda.sh
 source /work/user/ggong/miniforge3/etc/profile.d/mamba.sh
-mamba activate base
+mamba activate pie
 
 export BENCH_THREADS="1 2 4 8"
 export REPS=3

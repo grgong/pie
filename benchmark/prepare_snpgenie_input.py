@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Convert GFF3 CDS features to SNPGenie-compatible GTF format.
 
 Uses pie's annotation parser to select the longest isoform per gene,
