@@ -12,6 +12,7 @@ import numpy as np
 
 from pie.codon import (
     CODON_TO_INDEX,
+    IS_STOP,
     N_DIFFS,
     N_SITES,
     N_SITES_EXCL_STOP,
@@ -44,16 +45,11 @@ _IDX_TO_BASE = "ACGT"
 _COMPLEMENT_BASE = {"A": "T", "T": "A", "C": "G", "G": "C"}
 _VALID_CODON_BASES = frozenset("ACGT")
 
-# Vectorized codon encoding: ASCII byte -> base value (A=0,C=1,G=2,T=3)
-_BYTE_TO_BASE = np.zeros(256, dtype=np.int8)
-_BYTE_TO_BASE[65] = 0   # 'A'
-_BYTE_TO_BASE[67] = 1   # 'C'
-_BYTE_TO_BASE[71] = 2   # 'G'
-_BYTE_TO_BASE[84] = 3   # 'T'
-
-# Boolean mask for stop codons (indexed by codon index 0-63)
-from pie.codon import AMINO_ACID as _AMINO_ACID
-_IS_STOP = (_AMINO_ACID == "*")
+# Vectorized codon encoding: ASCII byte -> base value, derived from _BASE_TO_IDX.
+# Sentinel -1 for non-ACGT bytes so invalid input fails loudly.
+_BYTE_TO_BASE = np.full(256, -1, dtype=np.intp)
+for _b, _v in _BASE_TO_IDX.items():
+    _BYTE_TO_BASE[ord(_b)] = _v
 
 
 # ---------------------------------------------------------------------------
@@ -388,10 +384,10 @@ def compute_gene_diversity(
     b0 = _BYTE_TO_BASE[codon_bytes[0::3]]
     b1 = _BYTE_TO_BASE[codon_bytes[1::3]]
     b2 = _BYTE_TO_BASE[codon_bytes[2::3]]
-    all_idx = (b0.astype(np.intp) * 16 + b1.astype(np.intp) * 4 + b2.astype(np.intp))
+    all_idx = b0 * 16 + b1 * 4 + b2
 
     # Stop-codon mask and internal stop count
-    stop_mask = _IS_STOP[all_idx]
+    stop_mask = IS_STOP[all_idx]
     n_internal_stops = int(stop_mask[:-1].sum()) if n_total > 1 else 0
     valid_mask = ~stop_mask
     n_codons_analyzed = int(valid_mask.sum())
@@ -405,19 +401,18 @@ def compute_gene_diversity(
     for gene_i, hit_j in hit_codon_map.items():
         hit_idx[gene_i] = hit_j
 
-    # Identify polymorphic codons
+    # Identify polymorphic codons (vectorized), then handle rare mono-alt case
     is_poly = np.zeros(n_total, dtype=bool)
     if poly_mask is not None:
         hit_and_valid = np.where((hit_idx >= 0) & valid_mask)[0]
-        for gene_i in hit_and_valid:
-            hit_j = hit_idx[gene_i]
-            if poly_mask[hit_j]:
-                is_poly[gene_i] = True
-            else:
-                # Hit but monomorphic — check if fixed for alt allele
-                actual = _monomorphic_codon_index(freq_array[hit_j])
-                if actual is not None:
-                    effective_idx[gene_i] = actual
+        hit_js = hit_idx[hit_and_valid]
+        is_poly[hit_and_valid] = poly_mask[hit_js]
+        # Hit but monomorphic — check if fixed for alt allele (rare path)
+        mono_hit = hit_and_valid[~poly_mask[hit_js]]
+        for gene_i in mono_hit:
+            actual = _monomorphic_codon_index(freq_array[hit_idx[gene_i]])
+            if actual is not None:
+                effective_idx[gene_i] = actual
 
     # Vectorized monomorphic site-count accumulation
     mono_mask = valid_mask & ~is_poly
@@ -428,35 +423,28 @@ def compute_gene_diversity(
     total_N_diffs = 0.0
     total_S_diffs = 0.0
 
-    # Process polymorphic codons (typically ~1-2% of all codons)
+    # Build per-codon results in a single pass.  Polymorphic codons (~1-2%)
+    # get full diversity computation inline; monomorphic use vectorized lookup.
     n_poly = 0
     n_stop_warn = 0
-    poly_results: dict[int, tuple[float, float, float, float]] = {}
-    for gene_i in np.where(is_poly)[0]:
-        hit_j = hit_idx[gene_i]
-        div = compute_codon_diversity(freq_array[hit_j], exclude_stops=exclude_stops)
-        if exclude_stops and div.get("_stop_freq", 0.0) > 0.01:
-            n_stop_warn += 1
-        n_poly += 1
-        total_N_sites += div["N_sites"]
-        total_S_sites += div["S_sites"]
-        total_N_diffs += div["N_diffs"]
-        total_S_diffs += div["S_diffs"]
-        poly_results[int(gene_i)] = (
-            div["N_sites"], div["S_sites"], div["N_diffs"], div["S_diffs"])
-
-    # Build per-codon results
     codon_results: list[CodonResult] = []
-    valid_indices = np.where(valid_mask)[0]
-    for i in valid_indices:
+    for i in np.where(valid_mask)[0]:
         chrom_i = positions[i][0]
         pos1_i = positions[i][1]
-        pr = poly_results.get(int(i))
-        if pr is not None:
+        if is_poly[i]:
+            div = compute_codon_diversity(
+                freq_array[hit_idx[i]], exclude_stops=exclude_stops)
+            if exclude_stops and div.get("_stop_freq", 0.0) > 0.01:
+                n_stop_warn += 1
+            n_poly += 1
+            total_N_sites += div["N_sites"]
+            total_S_sites += div["S_sites"]
+            total_N_diffs += div["N_diffs"]
+            total_S_diffs += div["S_diffs"]
             codon_results.append(CodonResult(
                 chrom=chrom_i, pos1=pos1_i,
-                N_sites=pr[0], S_sites=pr[1],
-                N_diffs=pr[2], S_diffs=pr[3]))
+                N_sites=div["N_sites"], S_sites=div["S_sites"],
+                N_diffs=div["N_diffs"], S_diffs=div["S_diffs"]))
         else:
             codon_results.append(CodonResult(
                 chrom=chrom_i, pos1=pos1_i,

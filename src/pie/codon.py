@@ -60,10 +60,14 @@ AMINO_ACID: np.ndarray = np.array(
     [_GENETIC_CODE[INDEX_TO_CODON[i]] for i in range(64)], dtype="U1"
 )
 
+# Boolean mask for stop codons (indexed by codon index 0-63)
+IS_STOP: np.ndarray = (AMINO_ACID == "*")
+IS_STOP.flags.writeable = False
+
 
 def is_stop_codon(index: int) -> bool:
     """Return True if the codon at *index* is a stop codon."""
-    return AMINO_ACID[index] == "*"
+    return IS_STOP[index]
 
 
 # ---------------------------------------------------------------------------
