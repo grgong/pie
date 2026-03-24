@@ -332,6 +332,13 @@ class TestSlidingWindowPlot:
         sliding_window_plot(str(tsv), out)
         assert (tmp_path / "sliding_window.png").exists()
 
+    def test_rejects_bad_tsv(self, tmp_path):
+        """sliding_window_plot raises on missing columns."""
+        bad_tsv = tmp_path / "bad.tsv"
+        pd.DataFrame({"foo": [1]}).to_csv(bad_tsv, sep="\t", index=False)
+        with pytest.raises(ValueError, match="missing required columns"):
+            sliding_window_plot(str(bad_tsv), str(tmp_path / "out.png"))
+
     def test_handles_empty(self, tmp_path):
         df = pd.DataFrame({
             "chrom": pd.Series([], dtype=str),
