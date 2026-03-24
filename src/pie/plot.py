@@ -142,8 +142,6 @@ def _add_cumulative_pos(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, float
         lambda row: chrom_offsets[row["chrom"]] + (row["start"] + row["end"]) / 2,
         axis=1,
     )
-    chrom_to_idx = {c: i for i, c in enumerate(chroms)}
-    df["chrom_color"] = df["chrom"].map(lambda c: _OKABE_ITO[chrom_to_idx[c] % len(_OKABE_ITO)])
     df["chrom"] = pd.Categorical(df["chrom"], categories=chroms, ordered=True)
     return df, chrom_centers
 
@@ -298,7 +296,7 @@ def histogram_plot(
     df = _filter_ratio(df, max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio)
 
     if df.empty:
-        _save_plot(_empty_plot("No genes with finite piN/piS", width, height, dpi, "piN/piS", "Count"), output_path, dpi)
+        _save_plot(_empty_plot("No genes with finite piN/piS", width, height, dpi, "piN/piS", "Density"), output_path, dpi)
         return
 
     p = (
