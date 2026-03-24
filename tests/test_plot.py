@@ -65,6 +65,23 @@ class TestManhattanPlot:
         manhattan_plot(tsv, out, log_scale=True)
         assert (tmp_path / "manhattan.png").exists()
 
+    def test_log_scale_with_zero_ratio(self, tmp_path):
+        """Regression: log_scale=True with piN_piS=0 should not produce -inf."""
+        df = pd.DataFrame({
+            "chrom": ["chr1", "chr1"],
+            "gene_id": ["g1", "g2"],
+            "start": [100, 300],
+            "end": [200, 400],
+            "n_codons": [30, 40],
+            "piN": [0.0, 0.02],
+            "piS": [0.02, 0.01],
+            "piN_piS": [0.0, 2.0],
+        })
+        tsv = _make_gene_tsv(tmp_path, df)
+        out = str(tmp_path / "manhattan.png")
+        manhattan_plot(tsv, out, log_scale=True)
+        assert (tmp_path / "manhattan.png").exists()
+
     def test_label_top(self, tmp_path, basic_gene_df):
         tsv = _make_gene_tsv(tmp_path, basic_gene_df)
         out = str(tmp_path / "manhattan.png")
