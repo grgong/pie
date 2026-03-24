@@ -1,6 +1,12 @@
 from pie.cli import main
 
 
+def assert_in_order(text, *items):
+    _, options_text = text.split("Options:\n", 1)
+    positions = [options_text.index(item) for item in items]
+    assert positions == sorted(positions)
+
+
 class TestPoolCommand:
     def test_pool_help(self, runner):
         result = runner.invoke(main, ["pool", "--help"])
@@ -62,6 +68,26 @@ class TestPoolCommand:
         assert result.exit_code == 0
         assert "--include-stop-codons" in result.output
 
+    def test_pool_help_orders_shared_options(self, runner):
+        result = runner.invoke(main, ["pool", "--help"])
+        assert result.exit_code == 0
+        assert_in_order(
+            result.output,
+            "--vcf",
+            "--gff",
+            "--fasta",
+            "--outdir",
+            "--min-freq",
+            "--min-qual",
+            "--pass-only",
+            "--keep-multiallelic",
+            "--include-stop-codons",
+            "--window-size",
+            "--window-step",
+            "--threads",
+            "--quiet",
+        )
+
     def test_include_stop_codons_flag(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
         """--include-stop-codons flag is accepted and runs successfully."""
         result = runner.invoke(main, [
@@ -102,6 +128,7 @@ class TestPlotCommand:
         assert "histogram" in result.output
         assert "boxplot" in result.output
         assert "sliding-window" in result.output
+        assert "Subcommands:" not in result.output
 
     def test_manhattan_help(self, runner):
         result = runner.invoke(main, ["plot", "manhattan", "--help"])
@@ -111,6 +138,18 @@ class TestPlotCommand:
         assert "--log-scale" in result.output
         assert "--label-top" in result.output
         assert "--highlight-genes" in result.output
+
+    def test_manhattan_help_orders_shared_options(self, runner):
+        result = runner.invoke(main, ["plot", "manhattan", "--help"])
+        assert result.exit_code == 0
+        assert_in_order(
+            result.output,
+            "--input",
+            "--output",
+            "--dpi",
+            "--min-codons",
+            "--min-variants",
+        )
 
     def test_scatter_help(self, runner):
         result = runner.invoke(main, ["plot", "scatter", "--help"])
