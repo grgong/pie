@@ -12,6 +12,13 @@ log = logging.getLogger("pie")
 _HELP_OPTS = {"help_option_names": ["-h", "--help"]}
 
 
+class _OrderedGroup(click.Group):
+    """A Click group that lists commands in registration order."""
+
+    def list_commands(self, ctx):
+        return list(self.commands)
+
+
 def _apply_options(f, options):
     """Apply Click options while preserving the declared help order."""
     for args, kwargs in reversed(options):
@@ -19,7 +26,7 @@ def _apply_options(f, options):
     return f
 
 
-@click.group(context_settings=_HELP_OPTS)
+@click.group(cls=_OrderedGroup, context_settings=_HELP_OPTS)
 @click.version_option(__version__, "-V", "--version")
 def main():
     """pie — piN/piS Estimator for pool-seq and individual-sequencing data.
@@ -306,7 +313,7 @@ def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
 # pie plot (group + subcommands)
 # ---------------------------------------------------------------------------
 
-@main.group(invoke_without_command=True, no_args_is_help=True, context_settings=_HELP_OPTS)
+@main.group(cls=_OrderedGroup, invoke_without_command=True, no_args_is_help=True, context_settings=_HELP_OPTS)
 def plot():
     """Create publication-ready plots from piN/piS results.
     """
