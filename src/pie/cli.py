@@ -330,6 +330,15 @@ def _shared_plot_options(f):
     ])
 
 
+def _run_plot(plot_fn, input_path, output_path, **kwargs):
+    """Shared wrapper for all plot subcommands: validate input, run, report."""
+    if not os.path.exists(input_path):
+        click.echo(f"Error: file not found: {input_path}", err=True)
+        sys.exit(1)
+    plot_fn(input_path, output_path, **kwargs)
+    click.echo(f"Plot saved to {output_path}")
+
+
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
 @_shared_plot_options
 @click.option("-W", "--width", default=7.2, show_default=True, help="Figure width in inches.")
@@ -355,16 +364,11 @@ def manhattan(input_path, output_path, width, height, dpi, min_codons, min_varia
     """
     from pie.plot import manhattan_plot as _manhattan_plot
 
-    if not os.path.exists(input_path):
-        click.echo(f"Error: file not found: {input_path}", err=True)
-        sys.exit(1)
-
     genes = [g.strip() for g in highlight_genes.split(",")] if highlight_genes else None
-    _manhattan_plot(input_path, output_path, width=width, height=height, dpi=dpi,
-                    log_scale=log_scale, label_top=label_top, highlight_genes=genes,
-                    max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio,
-                    min_codons=min_codons, min_variants=min_variants)
-    click.echo(f"Plot saved to {output_path}")
+    _run_plot(_manhattan_plot, input_path, output_path, width=width, height=height, dpi=dpi,
+              log_scale=log_scale, label_top=label_top, highlight_genes=genes,
+              max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio,
+              min_codons=min_codons, min_variants=min_variants)
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
@@ -390,14 +394,9 @@ def scatter(input_path, output_path, width, height, dpi, min_codons, min_variant
     """
     from pie.plot import scatter_plot as _scatter_plot
 
-    if not os.path.exists(input_path):
-        click.echo(f"Error: file not found: {input_path}", err=True)
-        sys.exit(1)
-
-    _scatter_plot(input_path, output_path, width=width, height=height, dpi=dpi,
-                  color_by_chrom=color_by_chrom, max_piN=max_pin, max_piS=max_pis,
-                  min_codons=min_codons, min_variants=min_variants)
-    click.echo(f"Plot saved to {output_path}")
+    _run_plot(_scatter_plot, input_path, output_path, width=width, height=height, dpi=dpi,
+              color_by_chrom=color_by_chrom, max_piN=max_pin, max_piS=max_pis,
+              min_codons=min_codons, min_variants=min_variants)
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
@@ -420,14 +419,9 @@ def histogram(input_path, output_path, width, height, dpi, min_codons, min_varia
     """
     from pie.plot import histogram_plot as _histogram_plot
 
-    if not os.path.exists(input_path):
-        click.echo(f"Error: file not found: {input_path}", err=True)
-        sys.exit(1)
-
-    _histogram_plot(input_path, output_path, width=width, height=height, dpi=dpi,
-                    max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio,
-                    min_codons=min_codons, min_variants=min_variants)
-    click.echo(f"Plot saved to {output_path}")
+    _run_plot(_histogram_plot, input_path, output_path, width=width, height=height, dpi=dpi,
+              max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio,
+              min_codons=min_codons, min_variants=min_variants)
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
@@ -453,15 +447,10 @@ def boxplot(input_path, output_path, width, height, dpi, min_codons, min_variant
     """
     from pie.plot import boxplot_plot as _boxplot_plot
 
-    if not os.path.exists(input_path):
-        click.echo(f"Error: file not found: {input_path}", err=True)
-        sys.exit(1)
-
-    _boxplot_plot(input_path, output_path, width=width, height=height, dpi=dpi,
-                  max_piN=max_pin, max_piS=max_pis, max_ratio=max_ratio,
-                  exclude_zero_ratio=exclude_zero_ratio,
-                  min_codons=min_codons, min_variants=min_variants)
-    click.echo(f"Plot saved to {output_path}")
+    _run_plot(_boxplot_plot, input_path, output_path, width=width, height=height, dpi=dpi,
+              max_piN=max_pin, max_piS=max_pis, max_ratio=max_ratio,
+              exclude_zero_ratio=exclude_zero_ratio,
+              min_codons=min_codons, min_variants=min_variants)
 
 
 @plot.command("sliding-window", no_args_is_help=True, context_settings=_HELP_OPTS)
@@ -485,13 +474,8 @@ def sliding_window(input_path, output_path, width, height, dpi,
     """
     from pie.plot import sliding_window_plot as _sliding_window_plot
 
-    if not os.path.exists(input_path):
-        click.echo(f"Error: file not found: {input_path}", err=True)
-        sys.exit(1)
-
-    _sliding_window_plot(input_path, output_path, width=width, height=height, dpi=dpi,
-                         max_ratio=max_ratio)
-    click.echo(f"Plot saved to {output_path}")
+    _run_plot(_sliding_window_plot, input_path, output_path, width=width, height=height, dpi=dpi,
+              max_ratio=max_ratio)
 
 
 # ---------------------------------------------------------------------------
