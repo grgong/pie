@@ -7,6 +7,15 @@ def assert_in_order(text, *items):
     assert positions == sorted(positions)
 
 
+class TestMainGroup:
+    def test_main_help_command_order(self, runner):
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        _, commands_text = result.output.split("Commands:\n", 1)
+        positions = [commands_text.index(cmd) for cmd in ("pool", "ind", "plot", "summary")]
+        assert positions == sorted(positions)
+
+
 class TestPoolCommand:
     def test_pool_help(self, runner):
         result = runner.invoke(main, ["pool", "--help"])
