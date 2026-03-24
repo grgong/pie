@@ -300,6 +300,21 @@ class TestSlidingWindowPlot:
         assert (tmp_path / "sliding_window.png").exists()
         assert (tmp_path / "sliding_window.png").stat().st_size > 0
 
+    def test_multi_gene_same_chrom(self, tmp_path):
+        """Regression: lines should not cross gene boundaries."""
+        df = pd.DataFrame({
+            "chrom": ["chr1"] * 6,
+            "win_start": [0, 100, 200, 5000, 5100, 5200],
+            "win_end":   [100, 200, 300, 5100, 5200, 5300],
+            "gene_id":   ["gA", "gA", "gA", "gB", "gB", "gB"],
+            "piN_piS":   [0.5, 0.8, 1.0, 1.5, 1.1, 0.7],
+        })
+        tsv = tmp_path / "window_results.tsv"
+        df.to_csv(tsv, sep="\t", index=False)
+        out = str(tmp_path / "sliding_window.png")
+        sliding_window_plot(str(tsv), out)
+        assert (tmp_path / "sliding_window.png").exists()
+
     def test_handles_empty(self, tmp_path):
         df = pd.DataFrame({
             "chrom": pd.Series([], dtype=str),
