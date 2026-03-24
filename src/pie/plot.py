@@ -377,6 +377,7 @@ def sliding_window_plot(
     Height defaults to 1.5 inches per chromosome when not specified.
     """
     df = pd.read_csv(input_path, sep="\t")
+    _require_columns(df, ["chrom", "win_start", "win_end", "gene_id", "piN_piS"], input_path)
     df["chrom"] = df["chrom"].astype(str)
     df = df.dropna(subset=["piN_piS"])
     df = df[(df["piN_piS"] >= 0) & (df["piN_piS"] <= max_ratio)]
