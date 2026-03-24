@@ -183,6 +183,8 @@ def manhattan_plot(
     df = _load_gene_results(input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
     df = _filter_ratio(df, max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio)
+    if log_scale:
+        df = df[df["piN_piS"] > 0]
 
     if df.empty:
         _save_plot(_empty_plot("No genes with finite piN/piS", width, height, dpi, "Genomic position", "piN/piS"), output_path, dpi)
