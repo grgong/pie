@@ -322,7 +322,7 @@ def plot():
 def _shared_plot_options(f):
     """Decorator: shared options for all plot subcommands (except sliding-window)."""
     return _apply_options(f, [
-        (("-i", "--input", "input_path"), {"required": True, "help": "Input TSV file."}),
+        (("-i", "--input", "input_path"), {"required": True, "type": click.Path(exists=True, dir_okay=False), "help": "Input TSV file."}),
         (("-o", "--output", "output_path"), {"required": True, "help": "Output plot path (PNG/PDF/SVG)."}),
         (("--dpi",), {"default": 300, "show_default": True, "help": "Resolution in dots per inch."}),
         (("--min-codons",), {"default": None, "type": int, "help": "Exclude genes with fewer than N codons."}),
@@ -331,10 +331,7 @@ def _shared_plot_options(f):
 
 
 def _run_plot(plot_fn, input_path, output_path, **kwargs):
-    """Shared wrapper for all plot subcommands: validate input, run, report."""
-    if not os.path.exists(input_path):
-        click.echo(f"Error: file not found: {input_path}", err=True)
-        sys.exit(1)
+    """Shared wrapper for all plot subcommands: run and report."""
     plot_fn(input_path, output_path, **kwargs)
     click.echo(f"Plot saved to {output_path}")
 
@@ -454,7 +451,7 @@ def boxplot(input_path, output_path, width, height, dpi, min_codons, min_variant
 
 
 @plot.command("sliding-window", no_args_is_help=True, context_settings=_HELP_OPTS)
-@click.option("-i", "--input", "input_path", required=True, help="Input TSV file.")
+@click.option("-i", "--input", "input_path", required=True, type=click.Path(exists=True, dir_okay=False), help="Input TSV file.")
 @click.option("-o", "--output", "output_path", required=True, help="Output plot path (PNG/PDF/SVG).")
 @click.option("-W", "--width", default=7.2, show_default=True, help="Figure width in inches.")
 @click.option("-H", "--height", default=None, type=float, help="Figure height in inches.  [default: 1.5 per chromosome]")
