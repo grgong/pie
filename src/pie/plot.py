@@ -179,11 +179,9 @@ def manhattan_plot(
 ) -> None:
     """Create Manhattan plot of per-gene piN/piS."""
     df = _load_gene_results(input_path)
-    _require_columns(df, ["chrom", "gene_id", "start", "end", "piN_piS"], input_path)
+    _require_columns(df, ["gene_id", "start", "end", "piN_piS"], input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
-    df = _filter_ratio(df, max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio)
-    if log_scale:
-        df = df[df["piN_piS"] > 0]
+    df = _filter_ratio(df, max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio or log_scale)
 
     if df.empty:
         _save_plot(_empty_plot("No genes with finite piN/piS", width, height, dpi, "Genomic position", "piN/piS"), output_path, dpi)
@@ -249,7 +247,7 @@ def scatter_plot(
 ) -> None:
     """Create piN vs piS scatter plot."""
     df = _load_gene_results(input_path)
-    _require_columns(df, ["chrom", "piN", "piS", "n_codons"], input_path)
+    _require_columns(df, ["piN", "piS", "n_codons"], input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
     df = _filter_metric(df, "piN", max_value=max_piN)
     df = _filter_metric(df, "piS", max_value=max_piS)
@@ -329,7 +327,7 @@ def boxplot_plot(
 ) -> None:
     """Create faceted boxplots of piN, piS, and piN/piS per chromosome."""
     df = _load_gene_results(input_path)
-    _require_columns(df, ["chrom", "gene_id", "piN", "piS", "piN_piS"], input_path)
+    _require_columns(df, ["gene_id", "piN", "piS", "piN_piS"], input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
     chroms = _sort_chroms(df["chrom"].unique())
     df["chrom"] = pd.Categorical(df["chrom"], categories=chroms, ordered=True)
