@@ -69,9 +69,19 @@ def _sort_chroms(chroms) -> list[str]:
     )
 
 
+def _require_columns(df: pd.DataFrame, required: list[str], path: str) -> None:
+    """Raise ValueError if any required columns are missing."""
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Input file missing required columns: {', '.join(missing)} ({path})"
+        )
+
+
 def _load_gene_results(path: str) -> pd.DataFrame:
     """Load gene_results.tsv and prepare for plotting."""
     df = pd.read_csv(path, sep="\t")
+    _require_columns(df, ["chrom", "gene_id", "start", "end"], path)
     df["chrom"] = df["chrom"].astype(str)
     return df
 
