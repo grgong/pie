@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 from pie.plot import (
     manhattan_plot, scatter_plot, histogram_plot, boxplot_plot, sliding_window_plot,
-    _apply_base_qc, _filter_ratio, _filter_metric,
+    _apply_base_qc, _filter_ratio, _filter_metric, _require_columns,
 )
 
 
@@ -25,6 +25,24 @@ def basic_gene_df():
         "piS": [0.02, 0.017, 0.019, 0.015],
         "piN_piS": [0.5, 1.2, 0.8, 2.0],
     })
+
+
+class TestRequireColumns:
+    def test_passes_when_all_present(self):
+        df = pd.DataFrame({"a": [1], "b": [2]})
+        _require_columns(df, ["a", "b"], "test.tsv")  # should not raise
+
+    def test_raises_on_missing_column(self):
+        df = pd.DataFrame({"a": [1]})
+        with pytest.raises(ValueError, match="missing required columns.*b.*test.tsv"):
+            _require_columns(df, ["a", "b"], "test.tsv")
+
+    def test_load_gene_results_rejects_bad_tsv(self, tmp_path):
+        """Integration: _load_gene_results raises on missing columns."""
+        bad_tsv = tmp_path / "bad.tsv"
+        pd.DataFrame({"foo": [1]}).to_csv(bad_tsv, sep="\t", index=False)
+        with pytest.raises(ValueError, match="missing required columns"):
+            manhattan_plot(str(bad_tsv), str(tmp_path / "out.png"))
 
 
 class TestManhattanPlot:
