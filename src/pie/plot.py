@@ -394,7 +394,7 @@ def sliding_window_plot(
         height = 1.5 * len(chroms) + 0.5  # 1.5 in per panel + padding
 
     p = (
-        ggplot(df, aes(x="win_mid", y="piN_piS"))
+        ggplot(df, aes(x="win_mid", y="piN_piS", group="gene_id"))
         + geom_line(color="#0072B2", alpha=0.8, size=0.3)
         + geom_hline(yintercept=1.0, linetype="dashed", color="red", alpha=0.6, size=0.3)
         + facet_wrap("chrom", scales="free_x", ncol=1)
