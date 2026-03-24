@@ -12,6 +12,13 @@ log = logging.getLogger("pie")
 _HELP_OPTS = {"help_option_names": ["-h", "--help"]}
 
 
+def _apply_options(f, options):
+    """Apply Click options while preserving the declared help order."""
+    for args, kwargs in reversed(options):
+        f = click.option(*args, **kwargs)(f)
+    return f
+
+
 @click.group(context_settings=_HELP_OPTS)
 @click.version_option(__version__, "-V", "--version")
 def main():
@@ -45,23 +52,38 @@ def main():
 
 def _shared_run_options(f):
     """Decorator: shared options for both pool and ind subcommands."""
-    f = click.option("-v", "--vcf", required=True, help="Input VCF file (bgzipped or plain).")(f)
-    f = click.option("-g", "--gff", required=True, help="GFF3 or GTF annotation file.")(f)
-    f = click.option("-f", "--fasta", required=True, help="Reference FASTA file (must be indexed with .fai).")(f)
-    f = click.option("-o", "--outdir", required=True, help="Output directory (created if absent).")(f)
-    f = click.option("--min-freq", default=0.01, show_default=True, help="Minimum allele frequency.")(f)
-    f = click.option("-q", "--min-qual", default=20.0, show_default=True, help="Minimum variant quality (QUAL).")(f)
-    f = click.option("--pass-only", is_flag=True, help="Only use PASS-filtered variants.")(f)
-    f = click.option("--keep-multiallelic", is_flag=True,
-                     help="Keep and merge multiallelic sites instead of skipping them.")(f)
-    f = click.option("--include-stop-codons", is_flag=True,
-                     help="Count stop_gained as nonsynonymous (excluded by default, matching NG86/SNPGenie).")(f)
-    f = click.option("-w", "--window-size", default=1000, show_default=True, help="Sliding window size in bp.")(f)
-    f = click.option("-W", "--window-step", default=100, show_default=True, type=click.IntRange(min=1),
-                     help="Sliding window step in bp.")(f)
-    f = click.option("-t", "--threads", default=1, show_default=True, help="Number of parallel threads.")(f)
-    f = click.option("--quiet", is_flag=True, help="Suppress progress messages (show only warnings and summary).")(f)
-    return f
+    return _apply_options(f, [
+        (("-v", "--vcf"), {"required": True, "help": "Input VCF file (bgzipped or plain)."}),
+        (("-g", "--gff"), {"required": True, "help": "GFF3 or GTF annotation file."}),
+        (("-f", "--fasta"), {"required": True, "help": "Reference FASTA file (must be indexed with .fai)."}),
+        (("-o", "--outdir"), {"required": True, "help": "Output directory (created if absent)."}),
+        (("--min-freq",), {"default": 0.01, "show_default": True, "help": "Minimum allele frequency."}),
+        (("-q", "--min-qual"), {"default": 20.0, "show_default": True, "help": "Minimum variant quality (QUAL)."}),
+        (("--pass-only",), {"is_flag": True, "help": "Only use PASS-filtered variants."}),
+        (
+            ("--keep-multiallelic",),
+            {"is_flag": True, "help": "Keep and merge multiallelic sites instead of skipping them."},
+        ),
+        (
+            ("--include-stop-codons",),
+            {
+                "is_flag": True,
+                "help": "Count stop_gained as nonsynonymous (excluded by default, matching NG86/SNPGenie).",
+            },
+        ),
+        (("-w", "--window-size"), {"default": 1000, "show_default": True, "help": "Sliding window size in bp."}),
+        (
+            ("-W", "--window-step"),
+            {
+                "default": 100,
+                "show_default": True,
+                "type": click.IntRange(min=1),
+                "help": "Sliding window step in bp.",
+            },
+        ),
+        (("-t", "--threads"), {"default": 1, "show_default": True, "help": "Number of parallel threads."}),
+        (("--quiet",), {"is_flag": True, "help": "Suppress progress messages (show only warnings and summary)."}),
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -287,25 +309,18 @@ def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
 @main.group(invoke_without_command=True, no_args_is_help=True, context_settings=_HELP_OPTS)
 def plot():
     """Create publication-ready plots from piN/piS results.
-
-    \b
-    Subcommands:
-      manhattan       Genome-wide Manhattan plot of per-gene piN/piS
-      scatter         piN vs piS scatter plot
-      histogram       Distribution of piN/piS ratios
-      boxplot         Per-chromosome boxplots of piN, piS, piN/piS
-      sliding-window  Sliding window piN/piS along chromosomes
     """
 
 
 def _shared_plot_options(f):
     """Decorator: shared options for all plot subcommands (except sliding-window)."""
-    f = click.option("-i", "--input", "input_path", required=True, help="Input TSV file.")(f)
-    f = click.option("-o", "--output", "output_path", required=True, help="Output plot path (PNG/PDF/SVG).")(f)
-    f = click.option("--dpi", default=300, show_default=True, help="Resolution in dots per inch.")(f)
-    f = click.option("--min-codons", default=None, type=int, help="Exclude genes with fewer than N codons.")(f)
-    f = click.option("--min-variants", default=None, type=int, help="Exclude genes with fewer than N variants.")(f)
-    return f
+    return _apply_options(f, [
+        (("-i", "--input", "input_path"), {"required": True, "help": "Input TSV file."}),
+        (("-o", "--output", "output_path"), {"required": True, "help": "Output plot path (PNG/PDF/SVG)."}),
+        (("--dpi",), {"default": 300, "show_default": True, "help": "Resolution in dots per inch."}),
+        (("--min-codons",), {"default": None, "type": int, "help": "Exclude genes with fewer than N codons."}),
+        (("--min-variants",), {"default": None, "type": int, "help": "Exclude genes with fewer than N variants."}),
+    ])
 
 
 @plot.command(no_args_is_help=True, context_settings=_HELP_OPTS)
