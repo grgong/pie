@@ -81,7 +81,7 @@ def _require_columns(df: pd.DataFrame, required: list[str], path: str) -> None:
 def _load_gene_results(path: str) -> pd.DataFrame:
     """Load gene_results.tsv and prepare for plotting."""
     df = pd.read_csv(path, sep="\t")
-    _require_columns(df, ["chrom", "gene_id", "start", "end"], path)
+    _require_columns(df, ["chrom"], path)
     df["chrom"] = df["chrom"].astype(str)
     return df
 
@@ -179,6 +179,7 @@ def manhattan_plot(
 ) -> None:
     """Create Manhattan plot of per-gene piN/piS."""
     df = _load_gene_results(input_path)
+    _require_columns(df, ["chrom", "gene_id", "start", "end", "piN_piS"], input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
     df = _filter_ratio(df, max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio)
     if log_scale:
@@ -248,6 +249,7 @@ def scatter_plot(
 ) -> None:
     """Create piN vs piS scatter plot."""
     df = _load_gene_results(input_path)
+    _require_columns(df, ["chrom", "piN", "piS", "n_codons"], input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
     df = _filter_metric(df, "piN", max_value=max_piN)
     df = _filter_metric(df, "piS", max_value=max_piS)
@@ -292,6 +294,7 @@ def histogram_plot(
 ) -> None:
     """Create histogram of piN/piS distribution with density overlay."""
     df = _load_gene_results(input_path)
+    _require_columns(df, ["piN_piS"], input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
     df = _filter_ratio(df, max_ratio=max_ratio, exclude_zero_ratio=exclude_zero_ratio)
 
@@ -326,6 +329,7 @@ def boxplot_plot(
 ) -> None:
     """Create faceted boxplots of piN, piS, and piN/piS per chromosome."""
     df = _load_gene_results(input_path)
+    _require_columns(df, ["chrom", "gene_id", "piN", "piS", "piN_piS"], input_path)
     df = _apply_base_qc(df, min_codons=min_codons, min_variants=min_variants)
     chroms = _sort_chroms(df["chrom"].unique())
     df["chrom"] = pd.Categorical(df["chrom"], categories=chroms, ordered=True)
