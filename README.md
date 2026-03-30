@@ -107,6 +107,9 @@ pie ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
 pie ind -v multi_sample.vcf.gz -g genes.gff3 -f reference.fa -o results/ \
   --samples-file samples.txt --min-call-rate 0.9
 
+# Per-variant annotation table
+pie pool -v variants.vcf.gz -g genes.gff3 -f reference.fa -o results/ --variant-table
+
 # View summary
 pie summary results/summary.tsv
 
@@ -159,6 +162,7 @@ pie pool -v FILE -g FILE -f FILE -o DIR [OPTIONS]
 | `--window-size` | `-w` | 1000 | Sliding window size in bp |
 | `--window-step` | `-W` | 100 | Sliding window step in bp |
 | `--threads` | `-t` | 1 | Number of parallel worker processes |
+| `--variant-table` | | off | Write per-variant annotation table (`variant_results.tsv`) |
 
 **Pool-only options:**
 
@@ -346,6 +350,43 @@ n_samples_selected and mean_call_rate (variant-site-weighted average).
 
 Genome-wide piN and piS are computed by summing N/S diffs and sites
 across all genes before dividing (not averaging per-gene ratios).
+
+### `variant_results.tsv`
+
+Per-variant annotation table, produced only when `--variant-table` is
+given. One row per CDS SNP that passes quality filters.
+
+| Column | Description | Example |
+|--------|-------------|---------|
+| chrom | Chromosome/scaffold | X |
+| pos | 1-based genomic position | 458032 |
+| ref | Reference allele | A |
+| alt | Alternate allele | G |
+| gene_id | Gene the variant falls in | gene_007 |
+| codon_pos | Position within codon (1, 2, 3) | 2 |
+| ref_codon | Reference codon | GAT |
+| alt_codon | Alternate codon | GGT |
+| ref_aa | Reference amino acid | D |
+| alt_aa | Alternate amino acid | G |
+| variant_class | synonymous, nonsynonymous, stop_gained, or stop_lost | nonsynonymous |
+| ao | Alternate allele observation count | 22 |
+| ro | Reference allele observation count | 107 |
+| dp | Total depth at site | 129 |
+| af | Allele frequency (ao / dp) | 0.1705 |
+| strand | Coding strand (+/−) | + |
+| cds_position | 1-based nucleotide position within CDS | 152 |
+| n_sites | Fractional nonsynonymous site count at this codon position | 0.6667 |
+| s_sites | Fractional synonymous site count at this codon position | 0.3333 |
+
+**Notes:**
+- `af` is computed from read counts (`ao / dp`), not from the VCF
+  INFO/AF field (which FreeBayes reports as 0.5 for all heterozygous
+  calls in pool-seq mode).
+- In individual mode, `ao`/`ro` are allele counts from genotypes (not
+  read counts) and `dp` is the allele number (AN = 2 × called samples).
+- Only variants within CDS regions that pass quality filters are included.
+  If a variant affects multiple genes/transcripts, the longest-isoform
+  selection applies.
 
 ## Algorithm
 
