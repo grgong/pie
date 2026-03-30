@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from bisect import bisect_left
 
 import numpy as np
@@ -9,32 +10,16 @@ import pandas as pd
 
 from pie.diversity import GeneResult, VariantRecord
 
+_VARIANT_COLUMNS = [f.name for f in dataclasses.fields(VariantRecord)]
+
 
 def write_variant_results(records: list[VariantRecord], path: str) -> None:
     """Write per-variant TSV with codon annotation and allele counts."""
-    columns = [
-        "chrom", "pos", "ref", "alt", "gene_id", "codon_pos",
-        "ref_codon", "alt_codon", "ref_aa", "alt_aa", "variant_class",
-        "ao", "ro", "dp", "af", "strand", "cds_position",
-        "n_sites", "s_sites",
-    ]
     if not records:
-        pd.DataFrame(columns=columns).to_csv(path, sep="\t", index=False)
+        pd.DataFrame(columns=_VARIANT_COLUMNS).to_csv(path, sep="\t", index=False)
         return
-    rows = [
-        {
-            "chrom": r.chrom, "pos": r.pos, "ref": r.ref, "alt": r.alt,
-            "gene_id": r.gene_id, "codon_pos": r.codon_pos,
-            "ref_codon": r.ref_codon, "alt_codon": r.alt_codon,
-            "ref_aa": r.ref_aa, "alt_aa": r.alt_aa,
-            "variant_class": r.variant_class,
-            "ao": r.ao, "ro": r.ro, "dp": r.dp, "af": r.af,
-            "strand": r.strand, "cds_position": r.cds_position,
-            "n_sites": r.n_sites, "s_sites": r.s_sites,
-        }
-        for r in records
-    ]
-    pd.DataFrame(rows, columns=columns).to_csv(path, sep="\t", index=False)
+    rows = [[getattr(r, c) for c in _VARIANT_COLUMNS] for r in records]
+    pd.DataFrame(rows, columns=_VARIANT_COLUMNS).to_csv(path, sep="\t", index=False)
 
 
 def write_gene_results(results: list[GeneResult], path: str) -> None:
