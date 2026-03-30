@@ -1,3 +1,5 @@
+import os
+
 from pie.cli import main
 
 
@@ -349,3 +351,35 @@ class TestIndividualMode:
             "--min-freq", "0", "--min-qual", "0", "--min-call-rate", "0",
         ])
         assert result.exit_code == 0, result.output
+
+
+class TestVariantTableFlag:
+    def test_pool_variant_table_produced(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        from pie.cli import main
+        outdir = str(tmp_path / "out")
+        result = runner.invoke(main, [
+            "pool", "-v", vcf_file, "-g", gff3_file, "-f", ref_fasta,
+            "-o", outdir, "-d", "0", "-q", "0", "--min-freq", "0",
+            "--variant-table",
+        ])
+        assert result.exit_code == 0, result.output
+        import pandas as pd
+        vpath = os.path.join(outdir, "variant_results.tsv")
+        assert os.path.exists(vpath)
+        df = pd.read_csv(vpath, sep="\t")
+        assert len(df) > 0
+        assert "variant_class" in df.columns
+        assert "ao" in df.columns
+        for _, row in df.iterrows():
+            expected_af = row["ao"] / (row["ao"] + row["ro"])
+            assert abs(row["af"] - expected_af) < 1e-6
+
+    def test_no_variant_table_by_default(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
+        from pie.cli import main
+        outdir = str(tmp_path / "out")
+        result = runner.invoke(main, [
+            "pool", "-v", vcf_file, "-g", gff3_file, "-f", ref_fasta,
+            "-o", outdir, "-d", "0", "-q", "0", "--min-freq", "0",
+        ])
+        assert result.exit_code == 0
+        assert not os.path.exists(os.path.join(outdir, "variant_results.tsv"))

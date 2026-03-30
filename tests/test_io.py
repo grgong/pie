@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
-from pie.io import write_gene_results, write_window_results, write_summary
-from pie.diversity import GeneResult, CodonResult
+from pie.io import write_gene_results, write_window_results, write_summary, write_variant_results
+from pie.diversity import GeneResult, CodonResult, VariantRecord
 
 
 class TestIndividualModeColumns:
@@ -163,3 +163,54 @@ class TestWriteSummary:
         df = pd.read_csv(outpath, sep="\t")
         assert df.iloc[0]["stop_renorm_genes"] == 2   # g1 and g3
         assert df.iloc[0]["stop_renorm_codons"] == 4   # 3 + 0 + 1
+
+
+class TestWriteVariantResults:
+    def _make_records(self):
+        return [
+            VariantRecord(
+                chrom="chr1", pos=6, ref="T", alt="C", gene_id="gene1",
+                codon_pos=3, ref_codon="GCT", alt_codon="GCC",
+                ref_aa="A", alt_aa="A", variant_class="synonymous",
+                ao=20, ro=80, dp=100, af=0.2,
+                strand="+", cds_position=6, n_sites=0.0, s_sites=1.0,
+            ),
+            VariantRecord(
+                chrom="chr1", pos=7, ref="G", alt="A", gene_id="gene1",
+                codon_pos=1, ref_codon="GAT", alt_codon="AAT",
+                ref_aa="D", alt_aa="N", variant_class="nonsynonymous",
+                ao=30, ro=70, dp=100, af=0.3,
+                strand="+", cds_position=7, n_sites=1.0, s_sites=0.0,
+            ),
+        ]
+
+    def test_writes_tsv(self, tmp_path):
+        path = str(tmp_path / "variant_results.tsv")
+        write_variant_results(self._make_records(), path)
+        df = pd.read_csv(path, sep="\t")
+        assert len(df) == 2
+        assert set(df.columns) >= {
+            "chrom", "pos", "ref", "alt", "gene_id", "variant_class",
+            "ao", "ro", "dp", "af",
+        }
+
+    def test_correct_values(self, tmp_path):
+        path = str(tmp_path / "variant_results.tsv")
+        write_variant_results(self._make_records(), path)
+        df = pd.read_csv(path, sep="\t")
+        row = df.iloc[0]
+        assert row["chrom"] == "chr1"
+        assert row["pos"] == 6
+        assert row["ref"] == "T"
+        assert row["alt"] == "C"
+        assert row["variant_class"] == "synonymous"
+        assert row["ao"] == 20
+        assert row["ro"] == 80
+        assert abs(row["af"] - 0.2) < 1e-6
+
+    def test_empty_records(self, tmp_path):
+        path = str(tmp_path / "variant_results.tsv")
+        write_variant_results([], path)
+        df = pd.read_csv(path, sep="\t")
+        assert len(df) == 0
+        assert "chrom" in df.columns

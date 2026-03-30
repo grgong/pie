@@ -90,6 +90,7 @@ def _shared_run_options(f):
         ),
         (("-t", "--threads"), {"default": 1, "show_default": True, "help": "Number of parallel threads."}),
         (("--quiet",), {"is_flag": True, "help": "Suppress progress messages (show only warnings and summary)."}),
+        (("--variant-table",), {"is_flag": True, "help": "Write per-variant annotation table (variant_results.tsv)."}),
     ])
 
 
@@ -100,7 +101,8 @@ def _shared_run_options(f):
 def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
                   min_qual, pass_only, keep_multiallelic, include_stop_codons,
                   window_size, window_step, threads, quiet, sample=None,
-                  samples=None, min_call_rate=None, min_an=None):
+                  samples=None, min_call_rate=None, min_an=None,
+                  variant_table=False):
     """Core analysis logic shared by pool and ind subcommands."""
     from pie.vcf import ensure_indexed, get_sample_names
     from pie.parallel import run_parallel
@@ -185,6 +187,7 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
             exclude_stops=not include_stop_codons, threads=threads,
             sample=sample, mode=mode, samples=selected_samples,
             min_call_rate=min_call_rate, min_an=min_an,
+            emit_variants=variant_table,
         )
     except (NoGenesFoundError, ValueError) as exc:
         click.echo(f"Error: {exc}", err=True)
@@ -207,6 +210,16 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
     write_summary(results, summary_path)
     log.info("Summary: %s", summary_path)
 
+    if variant_table:
+        from pie.io import write_variant_results
+        all_variant_records = []
+        for r in results:
+            if r.variant_records:
+                all_variant_records.extend(r.variant_records)
+        var_path = os.path.join(outdir, f"{prefix}variant_results.tsv")
+        write_variant_results(all_variant_records, var_path)
+        log.info("Variant table: %s (%d variants)", var_path, len(all_variant_records))
+
     click.echo(f"Done. Results written to {outdir}/")
 
 
@@ -222,7 +235,7 @@ def _run_analysis(*, vcf, gff, fasta, outdir, mode, min_freq, min_depth,
               help="Sample name to analyse (for multi-sample VCFs).")
 def pool(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
          keep_multiallelic, include_stop_codons, window_size, window_step,
-         threads, quiet, min_depth, sample):
+         threads, quiet, variant_table, min_depth, sample):
     """Run pool-seq piN/piS analysis (allele-frequency based).
 
     \b
@@ -245,6 +258,7 @@ def pool(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
         pass_only=pass_only, keep_multiallelic=keep_multiallelic,
         include_stop_codons=include_stop_codons, window_size=window_size,
         window_step=window_step, threads=threads, quiet=quiet, sample=sample,
+        variant_table=variant_table,
     )
 
 
@@ -264,7 +278,7 @@ def pool(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
               help="Minimum allele number (AN).")
 def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
         keep_multiallelic, include_stop_codons, window_size, window_step,
-        threads, quiet, samples, samples_file, min_call_rate, min_an):
+        threads, quiet, variant_table, samples, samples_file, min_call_rate, min_an):
     """Run individual-sequencing piN/piS analysis (genotype based).
 
     \b
@@ -306,6 +320,7 @@ def ind(vcf, gff, fasta, outdir, min_freq, min_qual, pass_only,
         include_stop_codons=include_stop_codons, window_size=window_size,
         window_step=window_step, threads=threads, quiet=quiet,
         samples=resolved_samples, min_call_rate=min_call_rate, min_an=min_an,
+        variant_table=variant_table,
     )
 
 
