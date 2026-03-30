@@ -91,7 +91,7 @@ class VariantRecord:
     ao: int
     ro: int
     dp: int
-    af: float           # ao / (ao + ro)
+    af: float           # ao / dp (site-wide depth, not ao+ro)
     strand: str = "+"
     cds_position: int = 0   # 1-based nucleotide position within CDS
     n_sites: float = 0.0    # fractional N site count at this codon position
@@ -275,8 +275,7 @@ def annotate_variants(
         else:
             vclass = "nonsynonymous"
 
-        ao_ro_sum = var.ao + var.ro
-        af = var.ao / ao_ro_sum if ao_ro_sum > 0 else 0.0
+        af = var.ao / var.depth if var.depth > 0 else 0.0
 
         codon_table_idx = CODON_TO_INDEX[ref_codon]
         cds_pos = codon_idx * 3 + pos_in_codon + 1  # 1-based

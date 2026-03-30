@@ -517,12 +517,28 @@ class TestAnnotateVariants:
         records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
         assert len(records) == 0
 
-    def test_af_computed_from_ao_ro(self):
+    def test_af_uses_site_depth(self):
+        """AF = ao/dp (site-wide depth), not ao/(ao+ro)."""
         codons = ["AAA"]
         positions = [("chr1", 0, 1, 2)]
-        variants = [Variant(pos=0, ref="A", alt="G", freq=0.5, depth=200, ao=20, ro=80)]
+        # depth=200 but ao+ro=100 — simulates a multiallelic site
+        variants = [Variant(pos=0, ref="A", alt="G", freq=0.1, depth=200, ao=20, ro=80)]
         records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
-        assert records[0].af == pytest.approx(0.2)
+        assert records[0].af == pytest.approx(20 / 200)  # 0.1, not 20/100=0.2
+
+    def test_af_multiallelic_site(self):
+        """Two ALTs at the same codon position get correct AF from site depth."""
+        codons = ["AAA"]
+        positions = [("chr1", 0, 1, 2)]
+        # Triallelic: ref=50, alt1=30, alt2=20, total=100
+        variants = [
+            Variant(pos=0, ref="A", alt="G", freq=0.3, depth=100, ao=30, ro=50),
+            Variant(pos=0, ref="A", alt="C", freq=0.2, depth=100, ao=20, ro=50),
+        ]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        assert len(records) == 2
+        assert records[0].af == pytest.approx(0.30)  # 30/100, not 30/80
+        assert records[1].af == pytest.approx(0.20)  # 20/100, not 20/70
 
     def test_cds_position(self):
         codons = ["ATG", "GCT", "GAT"]

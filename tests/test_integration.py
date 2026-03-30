@@ -313,7 +313,7 @@ class TestVariantTableIntegration:
         # Total variant rows should be > 0 for test data
         assert len(variants) > 0
 
-        # AF must be computed from ao/ro, not VCF AF
+        # AF must be computed from read counts (ao/dp), not VCF AF
         for _, row in variants.iterrows():
-            expected_af = row["ao"] / (row["ao"] + row["ro"])
+            expected_af = row["ao"] / row["dp"]
             assert abs(row["af"] - expected_af) < 1e-6
