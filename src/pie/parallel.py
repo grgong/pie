@@ -15,15 +15,16 @@ log = logging.getLogger(__name__)
 
 def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,
-                 mode, samples, min_call_rate, min_an):
+                 mode, samples, min_call_rate, min_an, emit_variants):
     """Initialize per-worker file handles (stored in globals)."""
     # Suppress noisy cyvcf2/htslib "no intervals found" warnings that fire
     # for every empty-region tabix query (tens per run, no diagnostic value).
     warnings.filterwarnings("ignore", message="no intervals found",
                             category=UserWarning)
-    global _ref, _vcf, _exclude_stops, _n_samples
+    global _ref, _vcf, _exclude_stops, _n_samples, _emit_variants
     _ref = ReferenceGenome(fasta_path)
     _exclude_stops = exclude_stops
+    _emit_variants = emit_variants
 
     if mode == "individual":
         _vcf = IndividualVariantReader(
@@ -54,7 +55,8 @@ def _worker_cleanup():
 def _process_gene(gene: GeneModel) -> GeneResult:
     """Process a single gene using worker-local handles."""
     try:
-        result = compute_gene_diversity(gene, _ref, _vcf, exclude_stops=_exclude_stops)
+        result = compute_gene_diversity(gene, _ref, _vcf, exclude_stops=_exclude_stops,
+                                         emit_variants=_emit_variants)
         result.n_samples = _n_samples
         return result
     except Exception as exc:
@@ -80,6 +82,7 @@ def run_parallel(
     samples: list[str] | None = None,
     min_call_rate: float = 0.8,
     min_an: int = 2,
+    emit_variants: bool = False,
 ) -> list[GeneResult]:
     """Run piN/piS analysis across all genes.
 
@@ -125,7 +128,7 @@ def run_parallel(
 
     init_args = (fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,
-                 mode, samples, min_call_rate, min_an)
+                 mode, samples, min_call_rate, min_an, emit_variants)
 
     if threads <= 1:
         # Single-threaded: no multiprocessing overhead
