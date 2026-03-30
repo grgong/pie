@@ -92,7 +92,6 @@ class VariantRecord:
     ro: int
     dp: int
     af: float           # ao / (ao + ro)
-    # Nice-to-have fields
     strand: str = "+"
     cds_position: int = 0   # 1-based nucleotide position within CDS
     n_sites: float = 0.0    # fractional N site count at this codon position
@@ -146,6 +145,18 @@ class GeneResult:
         return self.piN / self.piS if self.piS > 0 else None
 
 
+def _build_pos_map(
+    positions: list[tuple[str, int, int, int]],
+) -> dict[int, tuple[int, int]]:
+    """Map genomic position -> (codon_index, position_within_codon)."""
+    pos_map: dict[int, tuple[int, int]] = {}
+    for i, (_chrom, p1, p2, p3) in enumerate(positions):
+        pos_map[p1] = (i, 0)
+        pos_map[p2] = (i, 1)
+        pos_map[p3] = (i, 2)
+    return pos_map
+
+
 # ---------------------------------------------------------------------------
 # 1. Build allele frequency array
 # ---------------------------------------------------------------------------
@@ -182,12 +193,7 @@ def build_allele_freq_array(
     if not variants:
         return freq
 
-    # Build lookup: genomic_pos -> (codon_idx, pos_within_codon)
-    pos_map: dict[int, tuple[int, int]] = {}
-    for i, (chrom, p1, p2, p3) in enumerate(positions):
-        pos_map[p1] = (i, 0)
-        pos_map[p2] = (i, 1)
-        pos_map[p3] = (i, 2)
+    pos_map = _build_pos_map(positions)
 
     # Group variants by position for proper multi-allelic handling
     pos_variants: dict[int, list[Variant]] = {}
@@ -243,12 +249,7 @@ def annotate_variants(
     else:
         n_sites_tbl, s_sites_tbl = N_SITES, S_SITES
 
-    # Build pos -> (codon_idx, pos_within_codon) lookup
-    pos_map: dict[int, tuple[int, int]] = {}
-    for i, (chrom, p1, p2, p3) in enumerate(positions):
-        pos_map[p1] = (i, 0)
-        pos_map[p2] = (i, 1)
-        pos_map[p3] = (i, 2)
+    pos_map = _build_pos_map(positions)
 
     records: list[VariantRecord] = []
     for var in variants:

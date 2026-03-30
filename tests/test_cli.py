@@ -355,7 +355,7 @@ class TestIndividualMode:
 
 class TestVariantTableFlag:
     def test_pool_variant_table_produced(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
-        from pie.cli import main
+        import pandas as pd
         outdir = str(tmp_path / "out")
         result = runner.invoke(main, [
             "pool", "-v", vcf_file, "-g", gff3_file, "-f", ref_fasta,
@@ -363,7 +363,6 @@ class TestVariantTableFlag:
             "--variant-table",
         ])
         assert result.exit_code == 0, result.output
-        import pandas as pd
         vpath = os.path.join(outdir, "variant_results.tsv")
         assert os.path.exists(vpath)
         df = pd.read_csv(vpath, sep="\t")
@@ -375,7 +374,6 @@ class TestVariantTableFlag:
             assert abs(row["af"] - expected_af) < 1e-6
 
     def test_no_variant_table_by_default(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
-        from pie.cli import main
         outdir = str(tmp_path / "out")
         result = runner.invoke(main, [
             "pool", "-v", vcf_file, "-g", gff3_file, "-f", ref_fasta,
