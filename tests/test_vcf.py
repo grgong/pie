@@ -97,6 +97,42 @@ class TestVariantReader:
             assert variants[0].pos == 296
 
 
+class TestVariantAoRo:
+    """Tests for ao/ro fields on Variant objects."""
+
+    def test_pool_variant_has_ao_ro(self, vcf_file):
+        """Pool-mode variants from AD field populate ao and ro."""
+        with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as reader:
+            result = reader.fetch("chr1", 0, 10)
+        # pos 6 (1-based) = pos 5 (0-based): T>C, AD=80,20
+        var = [v for v in result.variants if v.pos == 5][0]
+        assert var.ao == 20
+        assert var.ro == 80
+
+    def test_pool_variant_ao_ro_second_variant(self, vcf_file):
+        """Second variant also has correct ao/ro."""
+        with VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as reader:
+            result = reader.fetch("chr1", 0, 10)
+        # pos 7 (1-based) = pos 6 (0-based): G>A, AD=70,30
+        var = [v for v in result.variants if v.pos == 6][0]
+        assert var.ao == 30
+        assert var.ro == 70
+
+    def test_individual_variant_has_ao_ro(self, individual_vcf_file):
+        """Individual-mode variants populate ao/ro from GT allele counts."""
+        with IndividualVariantReader(
+            individual_vcf_file, samples=["S1", "S2", "S3", "S4"],
+            min_freq=0.0, min_qual=0.0, pass_only=False,
+            keep_multiallelic=False, min_call_rate=0.0, min_an=0,
+        ) as reader:
+            result = reader.fetch("chr1", 0, 10)
+        # pos 6 (1-based) = pos 5: T>C, S1:0/1 S2:0/0 S3:0/1 S4:./.
+        # called=3, ref_count=4, alt_count=2
+        var = [v for v in result.variants if v.pos == 5][0]
+        assert var.ao == 2
+        assert var.ro == 4
+
+
 class TestMultiallelicFiltering:
     def test_default_skips_multiallelic(self, multiallelic_vcf_file):
         """Default behavior: positions with >1 ALT allele are discarded."""
