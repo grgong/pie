@@ -55,6 +55,8 @@ class Variant:
     alt: str      # alternate allele
     freq: float   # alt allele frequency (0-1)
     depth: int    # total depth (read depth in pool mode, AN in individual mode)
+    ao: int = 0   # alt allele observation count
+    ro: int = 0   # ref allele observation count
     call_rate: float | None = None  # fraction of called samples (individual mode only)
 
 
@@ -217,7 +219,7 @@ class VariantReader(_BaseVariantReader):
             group = by_pos[pos]
             is_multiallelic = pos in multiallelic_pos
             if not is_multiallelic:
-                p, ref, alt, freq, depth, _, _ = group[0]
+                p, ref, alt, freq, depth, ref_c, alt_c = group[0]
                 if depth < self._min_depth:
                     stats.n_filtered_depth += 1
                     continue
@@ -225,7 +227,8 @@ class VariantReader(_BaseVariantReader):
                     stats.n_filtered_freq += 1
                     continue
                 variants.append(Variant(
-                    pos=p, ref=ref, alt=alt, freq=freq, depth=depth))
+                    pos=p, ref=ref, alt=alt, freq=freq, depth=depth,
+                    ao=alt_c, ro=ref_c))
             elif not self._keep_multiallelic:
                 # Skip multiallelic sites by default
                 stats.n_filtered_multiallelic += 1
@@ -247,7 +250,8 @@ class VariantReader(_BaseVariantReader):
                         if new_freq >= self._min_freq:
                             variants.append(Variant(
                                 pos=r[0], ref=r[1], alt=r[2],
-                                freq=new_freq, depth=total_depth))
+                                freq=new_freq, depth=total_depth,
+                                ao=r[6], ro=ref_count))
                         else:
                             stats.n_filtered_freq += 1
                 else:
@@ -261,7 +265,8 @@ class VariantReader(_BaseVariantReader):
                             continue
                         variants.append(Variant(
                             pos=r[0], ref=r[1], alt=r[2],
-                            freq=r[3], depth=r[4]))
+                            freq=r[3], depth=r[4],
+                            ao=r[6], ro=r[5]))
 
         return FetchResult(variants, stats)
 
@@ -449,21 +454,23 @@ class IndividualVariantReader(_BaseVariantReader):
             group = by_pos[pos]
             is_multiallelic = pos in multiallelic_pos
             if not is_multiallelic:
-                p, ref, alt, freq, depth, _, _, cr = group[0]
+                p, ref, alt, freq, depth, ref_c, alt_c, cr = group[0]
                 if freq < self._min_freq:
                     stats.n_filtered_freq += 1
                     continue
                 variants.append(Variant(pos=p, ref=ref, alt=alt,
-                                        freq=freq, depth=depth, call_rate=cr))
+                                        freq=freq, depth=depth,
+                                        ao=alt_c, ro=ref_c, call_rate=cr))
             elif not self._keep_multiallelic:
                 stats.n_filtered_multiallelic += 1
                 continue
             else:
                 for r in group:
-                    p, ref, alt, freq, depth, _, _, cr = r
+                    p, ref, alt, freq, depth, ref_c, alt_c, cr = r
                     if freq >= self._min_freq:
                         variants.append(Variant(pos=p, ref=ref, alt=alt,
                                                 freq=freq, depth=depth,
+                                                ao=alt_c, ro=ref_c,
                                                 call_rate=cr))
                     else:
                         stats.n_filtered_freq += 1
