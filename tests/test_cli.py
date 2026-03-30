@@ -370,7 +370,7 @@ class TestVariantTableFlag:
         assert "variant_class" in df.columns
         assert "ao" in df.columns
         for _, row in df.iterrows():
-            expected_af = row["ao"] / (row["ao"] + row["ro"])
+            expected_af = row["ao"] / row["dp"]
             assert abs(row["af"] - expected_af) < 1e-6
 
     def test_no_variant_table_by_default(self, runner, ref_fasta, gff3_file, vcf_file, tmp_path):
