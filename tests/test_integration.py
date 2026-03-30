@@ -10,6 +10,8 @@ Test data layout (chr1, 350 bp):
   Gene3: pos 231-311, - strand, 27 codons (26 excl. stop), 1 low-QUAL variant
 """
 
+import os
+
 import pandas as pd
 from pie.cli import main
 
@@ -281,3 +283,37 @@ class TestIndividualMode:
         assert (out / "gene_results.tsv").exists()
         assert (out / "window_results.tsv").exists()
         assert (out / "summary.tsv").exists()
+
+
+class TestVariantTableIntegration:
+    def test_variant_table_content_matches_gene_results(
+        self, runner, ref_fasta, gff3_file, vcf_file, tmp_path
+    ):
+        """Variant table variant count per gene <= n_variants in gene_results."""
+        from pie.cli import main
+        outdir = str(tmp_path / "out")
+        result = runner.invoke(main, [
+            "pool", "-v", vcf_file, "-g", gff3_file, "-f", ref_fasta,
+            "-o", outdir, "-d", "0", "-q", "0", "--min-freq", "0",
+            "--variant-table",
+        ])
+        assert result.exit_code == 0
+
+        genes = pd.read_csv(os.path.join(outdir, "gene_results.tsv"), sep="\t")
+        variants = pd.read_csv(os.path.join(outdir, "variant_results.tsv"), sep="\t")
+
+        for _, grow in genes.iterrows():
+            gid = grow["gene_id"]
+            gene_vars = variants[variants["gene_id"] == gid]
+            assert len(gene_vars) <= grow["n_variants"], (
+                f"Gene {gid}: variant_results has {len(gene_vars)} rows "
+                f"but gene_results says n_variants={grow['n_variants']}"
+            )
+
+        # Total variant rows should be > 0 for test data
+        assert len(variants) > 0
+
+        # AF must be computed from ao/ro, not VCF AF
+        for _, row in variants.iterrows():
+            expected_af = row["ao"] / (row["ao"] + row["ro"])
+            assert abs(row["af"] - expected_af) < 1e-6
