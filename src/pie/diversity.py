@@ -11,6 +11,7 @@ from itertools import product
 import numpy as np
 
 from pie.codon import (
+    AMINO_ACID,
     CODON_TO_INDEX,
     IS_STOP,
     N_DIFFS,
@@ -67,6 +68,36 @@ class CodonResult:
     S_diffs: float
 
 
+@dataclass(slots=True)
+class VariantRecord:
+    """Per-variant annotation record for the variant table output.
+
+    Note: ao/ro come from FORMAT/AD in pool mode or GT allele counts in
+    individual mode. When AD is absent (INFO/AF fallback), ao=0, ro=0,
+    and af=0.0. In individual mode, dp is AN (allele number), not read depth.
+    """
+
+    chrom: str
+    pos: int            # 1-based genomic position
+    ref: str
+    alt: str
+    gene_id: str
+    codon_pos: int      # 1-based position within codon (1, 2, or 3)
+    ref_codon: str
+    alt_codon: str
+    ref_aa: str
+    alt_aa: str
+    variant_class: str  # synonymous, nonsynonymous, stop_gained, stop_lost
+    ao: int
+    ro: int
+    dp: int
+    af: float           # ao / dp (site-wide depth, not ao+ro)
+    strand: str = "+"
+    cds_position: int = 0   # 1-based nucleotide position within CDS
+    n_sites: float = 0.0    # fractional N site count at this codon position
+    s_sites: float = 0.0    # fractional S site count at this codon position
+
+
 @dataclass
 class GeneResult:
     """Per-gene diversity result."""
@@ -93,6 +124,7 @@ class GeneResult:
     n_ambiguous_codons: int = 0
     n_internal_stop_codons: int = 0
     filter_stats: FilterStats = field(default_factory=FilterStats)
+    variant_records: list[VariantRecord] | None = None
 
     @property
     def mean_call_rate(self) -> float | None:
@@ -111,6 +143,18 @@ class GeneResult:
     @property
     def piN_piS(self) -> float | None:
         return self.piN / self.piS if self.piS > 0 else None
+
+
+def _build_pos_map(
+    positions: list[tuple[str, int, int, int]],
+) -> dict[int, tuple[int, int]]:
+    """Map genomic position -> (codon_index, position_within_codon)."""
+    pos_map: dict[int, tuple[int, int]] = {}
+    for i, (_chrom, p1, p2, p3) in enumerate(positions):
+        pos_map[p1] = (i, 0)
+        pos_map[p2] = (i, 1)
+        pos_map[p3] = (i, 2)
+    return pos_map
 
 
 # ---------------------------------------------------------------------------
@@ -149,12 +193,7 @@ def build_allele_freq_array(
     if not variants:
         return freq
 
-    # Build lookup: genomic_pos -> (codon_idx, pos_within_codon)
-    pos_map: dict[int, tuple[int, int]] = {}
-    for i, (chrom, p1, p2, p3) in enumerate(positions):
-        pos_map[p1] = (i, 0)
-        pos_map[p2] = (i, 1)
-        pos_map[p3] = (i, 2)
+    pos_map = _build_pos_map(positions)
 
     # Group variants by position for proper multi-allelic handling
     pos_variants: dict[int, list[Variant]] = {}
@@ -188,6 +227,82 @@ def build_allele_freq_array(
     freq /= sums
 
     return freq
+
+
+# ---------------------------------------------------------------------------
+# 1b. Annotate individual variants with codon context
+# ---------------------------------------------------------------------------
+def annotate_variants(
+    codons: list[str],
+    positions: list[tuple[str, int, int, int]],
+    variants: list[Variant],
+    gene_id: str,
+    strand: str = "+",
+    exclude_stops: bool = False,
+) -> list[VariantRecord]:
+    """Annotate each variant with codon context and amino acid change."""
+    if not variants or not codons:
+        return []
+
+    if exclude_stops:
+        n_sites_tbl, s_sites_tbl = N_SITES_EXCL_STOP, S_SITES_EXCL_STOP
+    else:
+        n_sites_tbl, s_sites_tbl = N_SITES, S_SITES
+
+    pos_map = _build_pos_map(positions)
+
+    records: list[VariantRecord] = []
+    for var in variants:
+        if var.pos not in pos_map:
+            continue
+
+        codon_idx, pos_in_codon = pos_map[var.pos]
+        ref_codon = codons[codon_idx]
+
+        # Complement alt allele for minus strand
+        alt_base = _COMPLEMENT_BASE[var.alt] if strand == "-" else var.alt
+        alt_codon = ref_codon[:pos_in_codon] + alt_base + ref_codon[pos_in_codon + 1:]
+
+        ref_aa = AMINO_ACID[CODON_TO_INDEX[ref_codon]]
+        alt_aa = AMINO_ACID[CODON_TO_INDEX[alt_codon]]
+
+        if ref_aa == alt_aa:
+            vclass = "synonymous"
+        elif alt_aa == "*":
+            vclass = "stop_gained"
+        elif ref_aa == "*":
+            vclass = "stop_lost"
+        else:
+            vclass = "nonsynonymous"
+
+        af = var.ao / var.depth if var.depth > 0 else 0.0
+
+        codon_table_idx = CODON_TO_INDEX[ref_codon]
+        cds_pos = codon_idx * 3 + pos_in_codon + 1  # 1-based
+
+        records.append(VariantRecord(
+            chrom=positions[codon_idx][0],
+            pos=var.pos + 1,  # convert to 1-based
+            ref=var.ref,
+            alt=var.alt,
+            gene_id=gene_id,
+            codon_pos=pos_in_codon + 1,  # 1-based
+            ref_codon=ref_codon,
+            alt_codon=alt_codon,
+            ref_aa=ref_aa,
+            alt_aa=alt_aa,
+            variant_class=vclass,
+            ao=var.ao,
+            ro=var.ro,
+            dp=var.depth,
+            af=af,
+            strand=strand,
+            cds_position=cds_pos,
+            n_sites=float(n_sites_tbl[codon_table_idx, pos_in_codon]),
+            s_sites=float(s_sites_tbl[codon_table_idx, pos_in_codon]),
+        ))
+
+    return records
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +412,7 @@ def compute_gene_diversity(
     ref: ReferenceGenome,
     vcf: VariantReaderLike,
     exclude_stops: bool = False,
+    emit_variants: bool = False,
 ) -> GeneResult:
     """Compute per-gene piN/piS diversity.
 
@@ -473,6 +589,15 @@ def compute_gene_diversity(
     # Collect per-variant call rates (individual mode only)
     cr_list = [v.call_rate for v in all_variants if v.call_rate is not None]
 
+    # Annotate individual variants when requested
+    variant_records = None
+    if emit_variants and all_variants:
+        variant_records = annotate_variants(
+            codons=codons, positions=positions, variants=all_variants,
+            gene_id=gene.gene_id, strand=gene.strand,
+            exclude_stops=exclude_stops,
+        )
+
     return GeneResult(
         gene_id=gene.gene_id,
         transcript_id=gene.transcript_id,
@@ -494,4 +619,5 @@ def compute_gene_diversity(
         n_ambiguous_codons=n_ambiguous,
         n_internal_stop_codons=n_internal_stops,
         filter_stats=gene_filter_stats,
+        variant_records=variant_records,
     )

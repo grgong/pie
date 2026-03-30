@@ -1,14 +1,17 @@
 """Tests for the core piN/piS diversity engine."""
 
+import pytest
 import numpy as np
 from pie.codon import codon_to_index, N_SITES, S_SITES, CODON_TO_INDEX
 from pie.diversity import (
     _monomorphic_codon_index,
+    annotate_variants,
     build_allele_freq_array,
     compute_codon_diversity,
     compute_gene_diversity,
     CodonResult,
     GeneResult,
+    VariantRecord,
 )
 from pie.vcf import FetchResult, FilterStats, Variant
 
@@ -433,3 +436,170 @@ class TestFixedAltMonomorphicSiteCounts:
         # Confirm it's NOT the reference AAA site counts
         ref_n = float(N_SITES[CODON_TO_INDEX["AAA"]].sum())
         assert abs(cr0.N_sites - ref_n) > 0.1  # delta is 0.6667
+
+
+class TestVariantRecord:
+    """Test that VariantRecord can be constructed."""
+
+    def test_construction(self):
+        r = VariantRecord(
+            chrom="chr1", pos=6, ref="T", alt="C", gene_id="gene1",
+            codon_pos=3, ref_codon="GCT", alt_codon="GCC",
+            ref_aa="A", alt_aa="A", variant_class="synonymous",
+            ao=20, ro=80, dp=100, af=0.2,
+        )
+        assert r.chrom == "chr1"
+        assert r.pos == 6
+        assert r.variant_class == "synonymous"
+        assert r.strand == "+"  # default
+        assert r.cds_position == 0  # default
+        assert r.n_sites == 0.0  # default
+        assert r.s_sites == 0.0  # default
+
+
+class TestAnnotateVariants:
+    def test_synonymous_variant(self):
+        """GCT -> GCC (Ala -> Ala) at codon_pos 3 is synonymous."""
+        codons = ["ATG", "GCT", "GAT"]
+        positions = [("chr1", 0, 1, 2), ("chr1", 3, 4, 5), ("chr1", 6, 7, 8)]
+        variants = [Variant(pos=5, ref="T", alt="C", freq=0.2, depth=100, ao=20, ro=80)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        assert len(records) == 1
+        r = records[0]
+        assert r.chrom == "chr1"
+        assert r.pos == 6  # 1-based
+        assert r.ref_codon == "GCT"
+        assert r.alt_codon == "GCC"
+        assert r.ref_aa == "A"
+        assert r.alt_aa == "A"
+        assert r.variant_class == "synonymous"
+        assert r.codon_pos == 3
+        assert r.ao == 20
+        assert r.ro == 80
+        assert r.dp == 100
+        assert r.af == pytest.approx(20 / (20 + 80))
+
+    def test_nonsynonymous_variant(self):
+        codons = ["ATG", "GCT", "GAT"]
+        positions = [("chr1", 0, 1, 2), ("chr1", 3, 4, 5), ("chr1", 6, 7, 8)]
+        variants = [Variant(pos=6, ref="G", alt="A", freq=0.3, depth=100, ao=30, ro=70)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        r = records[0]
+        assert r.ref_codon == "GAT"
+        assert r.alt_codon == "AAT"
+        assert r.ref_aa == "D"
+        assert r.alt_aa == "N"
+        assert r.variant_class == "nonsynonymous"
+        assert r.codon_pos == 1
+
+    def test_minus_strand_complement(self):
+        codons = ["CAG"]
+        positions = [("chr1", 8, 7, 6)]
+        variants = [Variant(pos=7, ref="T", alt="G", freq=0.25, depth=80, ao=20, ro=60)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene3", strand="-")
+        r = records[0]
+        assert r.ref_codon == "CAG"
+        assert r.alt_codon == "CCG"
+        assert r.strand == "-"
+
+    def test_stop_gained(self):
+        codons = ["TGG"]
+        positions = [("chr1", 0, 1, 2)]
+        variants = [Variant(pos=2, ref="G", alt="A", freq=0.05, depth=100, ao=5, ro=95)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        assert records[0].variant_class == "stop_gained"
+        assert records[0].alt_aa == "*"
+
+    def test_variant_outside_codons_skipped(self):
+        codons = ["ATG"]
+        positions = [("chr1", 0, 1, 2)]
+        variants = [Variant(pos=99, ref="A", alt="G", freq=0.1, depth=100, ao=10, ro=90)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        assert len(records) == 0
+
+    def test_af_uses_site_depth(self):
+        """AF = ao/dp (site-wide depth), not ao/(ao+ro)."""
+        codons = ["AAA"]
+        positions = [("chr1", 0, 1, 2)]
+        # depth=200 but ao+ro=100 — simulates a multiallelic site
+        variants = [Variant(pos=0, ref="A", alt="G", freq=0.1, depth=200, ao=20, ro=80)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        assert records[0].af == pytest.approx(20 / 200)  # 0.1, not 20/100=0.2
+
+    def test_af_multiallelic_site(self):
+        """Two ALTs at the same codon position get correct AF from site depth."""
+        codons = ["AAA"]
+        positions = [("chr1", 0, 1, 2)]
+        # Triallelic: ref=50, alt1=30, alt2=20, total=100
+        variants = [
+            Variant(pos=0, ref="A", alt="G", freq=0.3, depth=100, ao=30, ro=50),
+            Variant(pos=0, ref="A", alt="C", freq=0.2, depth=100, ao=20, ro=50),
+        ]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        assert len(records) == 2
+        assert records[0].af == pytest.approx(0.30)  # 30/100, not 30/80
+        assert records[1].af == pytest.approx(0.20)  # 20/100, not 20/70
+
+    def test_cds_position(self):
+        codons = ["ATG", "GCT", "GAT"]
+        positions = [("chr1", 0, 1, 2), ("chr1", 3, 4, 5), ("chr1", 6, 7, 8)]
+        variants = [Variant(pos=7, ref="A", alt="G", freq=0.1, depth=100, ao=10, ro=90)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        assert records[0].cds_position == 8  # codon_idx=2, pos_in=1 -> 2*3+1+1=8
+
+    def test_n_sites_s_sites(self):
+        codons = ["GCT"]
+        positions = [("chr1", 0, 1, 2)]
+        variants = [Variant(pos=2, ref="T", alt="C", freq=0.2, depth=100, ao=20, ro=80)]
+        records = annotate_variants(codons=codons, positions=positions, variants=variants, gene_id="gene1", strand="+")
+        from pie.codon import N_SITES, S_SITES, CODON_TO_INDEX
+        idx = CODON_TO_INDEX["GCT"]
+        assert records[0].n_sites == pytest.approx(float(N_SITES[idx, 2]))
+        assert records[0].s_sites == pytest.approx(float(S_SITES[idx, 2]))
+
+
+class TestComputeGeneDiversityVariantRecords:
+    def test_variant_records_populated(self, ref_fasta, gff3_file, vcf_file):
+        from pie.reference import ReferenceGenome
+        from pie.annotation import parse_annotations
+        from pie.vcf import VariantReader
+
+        genes = parse_annotations(gff3_file)
+        gene1 = [g for g in genes if "gene1" in g.gene_id.lower()][0]
+
+        with ReferenceGenome(ref_fasta) as ref, \
+             VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as vcf:
+            result = compute_gene_diversity(gene1, ref, vcf, emit_variants=True)
+
+        assert result.variant_records is not None
+        assert len(result.variant_records) == 2
+
+        syn = [r for r in result.variant_records if r.pos == 6][0]
+        assert syn.variant_class == "synonymous"
+        assert syn.ref_codon == "GCT"
+        assert syn.alt_codon == "GCC"
+        assert syn.ao == 20
+        assert syn.ro == 80
+
+        nsyn = [r for r in result.variant_records if r.pos == 7][0]
+        assert nsyn.variant_class == "nonsynonymous"
+        assert nsyn.ref_codon == "GAT"
+        assert nsyn.alt_codon == "AAT"
+        assert nsyn.ref_aa == "D"
+        assert nsyn.alt_aa == "N"
+        assert nsyn.ao == 30
+        assert nsyn.ro == 70
+
+    def test_variant_records_none_by_default(self, ref_fasta, gff3_file, vcf_file):
+        from pie.reference import ReferenceGenome
+        from pie.annotation import parse_annotations
+        from pie.vcf import VariantReader
+
+        genes = parse_annotations(gff3_file)
+        gene1 = [g for g in genes if "gene1" in g.gene_id.lower()][0]
+
+        with ReferenceGenome(ref_fasta) as ref, \
+             VariantReader(vcf_file, min_freq=0.0, min_depth=0, min_qual=0) as vcf:
+            result = compute_gene_diversity(gene1, ref, vcf)
+
+        assert result.variant_records is None

@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import dataclasses
 from bisect import bisect_left
 
 import numpy as np
 import pandas as pd
 
-from pie.diversity import GeneResult
+from pie.diversity import GeneResult, VariantRecord
+
+_VARIANT_COLUMNS = [f.name for f in dataclasses.fields(VariantRecord)]
+
+
+def write_variant_results(records: list[VariantRecord], path: str) -> None:
+    """Write per-variant TSV with codon annotation and allele counts."""
+    if not records:
+        pd.DataFrame(columns=_VARIANT_COLUMNS).to_csv(path, sep="\t", index=False)
+        return
+    rows = [[getattr(r, c) for c in _VARIANT_COLUMNS] for r in records]
+    pd.DataFrame(rows, columns=_VARIANT_COLUMNS).to_csv(path, sep="\t", index=False)
 
 
 def write_gene_results(results: list[GeneResult], path: str) -> None:
