@@ -12,6 +12,9 @@ from pie.diversity import compute_gene_diversity, GeneResult
 
 log = logging.getLogger(__name__)
 
+_ref = None
+_vcf = None
+
 
 def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
                  pass_only, keep_multiallelic, exclude_stops, sample,
@@ -42,14 +45,28 @@ def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
         )
         _n_samples = None
 
+
+def _pool_worker_init(*args):
+    """Pool initializer: worker setup plus an atexit close.
+
+    Pool workers exit without passing through the parent's `finally`. The hook
+    must not go in `_worker_init` itself, which for threads <= 1 runs in the
+    *parent* — there it would fire again at interpreter exit, on handles the
+    `finally` already closed, once per run and never unregistered.
+    """
+    _worker_init(*args)
     atexit.register(_worker_cleanup)
 
 
 def _worker_cleanup():
-    """Close per-worker file handles."""
+    """Close per-worker file handles and drop the references."""
     global _ref, _vcf
-    _ref.close()
-    _vcf.close()
+    if _ref is not None:
+        _ref.close()
+        _ref = None
+    if _vcf is not None:
+        _vcf.close()
+        _vcf = None
 
 
 def _process_gene(gene: GeneModel) -> GeneResult:
@@ -138,9 +155,15 @@ def run_parallel(
         finally:
             _worker_cleanup()
     else:
+        # Pre-flight in the parent: Pool respawns a worker whose initializer
+        # raises, forever, so a bad FASTA/VCF path, a missing .fai/.tbi or an
+        # unknown --sample would hang rather than fail.
+        _worker_init(*init_args)
+        _worker_cleanup()
+
         with Pool(
             processes=threads,
-            initializer=_worker_init,
+            initializer=_pool_worker_init,
             initargs=init_args,
         ) as pool:
             results = pool.map(_process_gene, genes)

@@ -65,3 +65,27 @@ class TestRunParallel:
         for r in results:
             assert hasattr(r, "n_stop_codons")
             assert r.n_stop_codons >= 0
+
+
+class TestWorkerInitFailure:
+    """Bad inputs must raise, not hang — see run_parallel's pre-flight."""
+
+    def test_bad_fasta_raises_instead_of_hanging(self, gff3_file, vcf_file):
+        for threads in (1, 2):
+            with pytest.raises(OSError):
+                run_parallel("/nonexistent/ref.fa", gff3_file, vcf_file,
+                             threads=threads)
+
+
+class TestAtexitRegistration:
+    """No atexit hook in the single-threaded path — see _pool_worker_init."""
+
+    def test_single_thread_registers_no_atexit_hook(self, ref_fasta, gff3_file,
+                                                    vcf_file):
+        import atexit
+
+        before = atexit._ncallbacks()
+        for _ in range(3):
+            run_parallel(ref_fasta, gff3_file, vcf_file,
+                         min_freq=0.0, min_depth=0, min_qual=0, threads=1)
+        assert atexit._ncallbacks() == before
