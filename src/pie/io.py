@@ -12,6 +12,22 @@ from pie.diversity import GeneResult, VariantRecord
 
 _VARIANT_COLUMNS = [f.name for f in dataclasses.fields(VariantRecord)]
 
+_GENE_COLUMNS = [
+    "chrom", "gene_id", "transcript_id", "start", "end", "strand",
+    "n_codons", "n_poly_codons", "N_sites", "S_sites", "N_diffs", "S_diffs",
+    "piN", "piS", "piN_piS", "mean_variant_depth", "n_variants",
+    # QC columns
+    "n_ambiguous_codons", "n_internal_stop_codons", "n_vcf_records",
+    "n_filtered_qual", "n_filtered_depth", "n_filtered_freq",
+    "n_filtered_multiallelic", "n_filtered_not_snp",
+]
+_GENE_IND_COLUMNS = ["n_samples", "mean_call_rate", "n_filtered_call_rate"]
+
+_WINDOW_COLUMNS = [
+    "chrom", "win_start", "win_end", "gene_id", "n_codons",
+    "N_sites", "S_sites", "N_diffs", "S_diffs", "piN", "piS", "piN_piS",
+]
+
 
 def write_variant_results(records: list[VariantRecord], path: str) -> None:
     """Write per-variant TSV with codon annotation and allele counts."""
@@ -25,6 +41,9 @@ def write_variant_results(records: list[VariantRecord], path: str) -> None:
 def write_gene_results(results: list[GeneResult], path: str) -> None:
     """Write per-gene TSV with piN, piS, and piN/piS columns."""
     ind_mode = any(r.n_samples is not None for r in results)
+    if not results:
+        pd.DataFrame(columns=_GENE_COLUMNS).to_csv(path, sep="\t", index=False)
+        return
     rows = []
     for r in results:
         piN = r.piN
@@ -64,7 +83,7 @@ def write_gene_results(results: list[GeneResult], path: str) -> None:
             row["mean_call_rate"] = r.mean_call_rate
             row["n_filtered_call_rate"] = fs.n_filtered_call_rate
         rows.append(row)
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows)  # dict insertion order is the column order
     df.to_csv(path, sep="\t", index=False)
 
 
@@ -74,7 +93,13 @@ def write_window_results(
     window_size: int,
     window_step: int,
 ) -> None:
-    """Slide bp-based windows across each gene's CDS and aggregate codon results."""
+    """Slide bp-based windows across each gene's CDS and aggregate codon results.
+
+    Windows step on genomic position, so one can fall entirely inside an
+    intron. Those are skipped: writing them as piN=0.0/piS=0.0 would be
+    indistinguishable from a real measurement of zero, and at the default
+    100 bp step a gene with a 100 kb intron emits ~1000 of them.
+    """
     rows = []
     for r in results:
         if not r.codon_results:
@@ -97,12 +122,13 @@ def write_window_results(
 
         chrom = r.chrom
         gene_id = r.gene_id
-        win_start = cds_min
-        while win_start <= cds_max:
+        for win_start in range(cds_min, cds_max + 1, window_step):
             win_end = win_start + window_size
             # Bisect for codons with pos1 in [win_start, win_end)
             lo = bisect_left(pos_arr, win_start)
             hi = bisect_left(pos_arr, win_end)
+            if hi == lo:  # window falls entirely within an intron
+                continue
             n_codons = hi - lo
             N_sites = prefix[hi, 0] - prefix[lo, 0]
             S_sites = prefix[hi, 1] - prefix[lo, 1]
@@ -126,10 +152,11 @@ def write_window_results(
                 "piS": piS,
                 "piN_piS": piN_piS,
             })
-            win_start += window_step
 
-    df = pd.DataFrame(rows)
-    df.to_csv(path, sep="\t", index=False)
+    if not rows:
+        pd.DataFrame(columns=_WINDOW_COLUMNS).to_csv(path, sep="\t", index=False)
+        return
+    pd.DataFrame(rows).to_csv(path, sep="\t", index=False)
 
 
 def write_summary(results: list[GeneResult], path: str) -> None:

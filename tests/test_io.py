@@ -214,3 +214,79 @@ class TestWriteVariantResults:
         df = pd.read_csv(path, sep="\t")
         assert len(df) == 0
         assert "chrom" in df.columns
+
+
+class TestEmptyWindowsSkipped:
+    """Windows step on genomic position, codons are selected by position, so a
+    window can land entirely inside an intron. Writing those as piN=piS=0.0 is
+    indistinguishable from a real measurement of zero — and at the default
+    100 bp step a gene with a 100 kb intron emits ~1000 of them."""
+
+    @pytest.fixture
+    def intron_gene(self):
+        """10 codons at 1000-1029, a 20 kb intron, 10 codons at 21000-21029."""
+        codons = [CodonResult("chr1", p, 2.0, 1.0, 0.0, 0.0)
+                  for p in list(range(1000, 1030, 3)) + list(range(21000, 21030, 3))]
+        return [GeneResult(
+            gene_id="gene1", transcript_id="tx1", chrom="chr1",
+            start=1000, end=21030, strand="+", n_codons=20, n_poly_codons=0,
+            N_sites=40.0, S_sites=20.0, N_diffs=0.0, S_diffs=0.0,
+            mean_variant_depth=0.0, n_variants=0, codon_results=codons,
+        )]
+
+    @pytest.fixture
+    def window_df(self, intron_gene, tmp_path):
+        outpath = tmp_path / "window_results.tsv"
+        write_window_results(intron_gene, str(outpath),
+                             window_size=1000, window_step=1000)
+        return pd.read_csv(outpath, sep="\t")
+
+    def test_intron_windows_are_not_written(self, window_df):
+        assert len(window_df) == 2  # one per CDS block, not 21
+        assert (window_df["n_codons"] > 0).all()
+
+    def test_windows_keep_a_uniform_width(self, window_df):
+        """plot.py derives win_mid from the interval; clipping would skew it."""
+        assert (window_df["win_end"] - window_df["win_start"] == 1000).all()
+
+
+class TestEmptyResultsKeepHeader:
+    """pd.DataFrame([]) has no columns, so to_csv writes a bare newline."""
+
+    def test_empty_window_results(self, tmp_path):
+        outpath = tmp_path / "window_results.tsv"
+        write_window_results([], str(outpath), window_size=1000, window_step=100)
+        df = pd.read_csv(outpath, sep="\t")
+        assert len(df) == 0
+        assert {"chrom", "win_start", "win_end", "piN", "piS"} <= set(df.columns)
+
+    def test_empty_gene_results(self, tmp_path):
+        outpath = tmp_path / "gene_results.tsv"
+        write_gene_results([], str(outpath))
+        df = pd.read_csv(outpath, sep="\t")
+        assert len(df) == 0
+        assert {"gene_id", "piN", "piS", "piN_piS"} <= set(df.columns)
+
+    def test_empty_header_matches_populated_header(self, sample_results,
+                                                   tmp_path):
+        """The declared empty-case columns must not drift from the row keys."""
+        empty, populated = tmp_path / "e.tsv", tmp_path / "p.tsv"
+        write_gene_results([], str(empty))
+        write_gene_results(sample_results, str(populated))
+        assert (list(pd.read_csv(empty, sep="\t").columns)
+                == list(pd.read_csv(populated, sep="\t").columns))
+
+    def test_empty_window_header_matches_populated(self, sample_results,
+                                                   tmp_path):
+        empty, populated = tmp_path / "e.tsv", tmp_path / "p.tsv"
+        write_window_results([], str(empty), 1000, 100)
+        write_window_results(sample_results, str(populated), 1000, 100)
+        assert (list(pd.read_csv(empty, sep="\t").columns)
+                == list(pd.read_csv(populated, sep="\t").columns))
+
+    def test_gene_column_order_is_stable(self, sample_results, tmp_path):
+        outpath = tmp_path / "gene_results.tsv"
+        write_gene_results(sample_results, str(outpath))
+        df = pd.read_csv(outpath, sep="\t")
+        assert list(df.columns)[:6] == [
+            "chrom", "gene_id", "transcript_id", "start", "end", "strand"]
