@@ -457,7 +457,8 @@ def compute_gene_diversity(
             n_ambiguous_codons=n_ambiguous,
         )
 
-    # Fetch all variants across CDS exons
+    # Fetch all variants across CDS exons. cds_exons is merged upstream, so
+    # no position is covered by two exons and no record is fetched twice.
     all_variants: list[Variant] = []
     gene_filter_stats = FilterStats()
     for chrom, start, end in gene.cds_exons:

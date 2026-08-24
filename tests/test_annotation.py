@@ -3,6 +3,7 @@ import shutil
 
 from pie.annotation import (
     parse_annotations,
+    _merge_intervals,
     GeneModel,
     _file_checksum,
     _load_or_create_db,
@@ -157,3 +158,128 @@ class TestCacheReuse:
         import gffutils
         db = gffutils.FeatureDB(cache_path)
         assert _read_cached_checksum(db) == checksum2
+
+
+class TestCdsPhase:
+    """The GFF phase column must be honoured on each transcript's first CDS.
+
+    5'-partial models (no annotated start codon, contig-edge fragments) carry
+    phase 1 or 2 there; ignoring it translates the whole transcript out of
+    frame, so every codon's syn/nonsyn classification in that gene is wrong.
+    """
+
+    def _gff(self, tmp_path, name, lines):
+        p = tmp_path / name
+        p.write_text("##gff-version 3\n" + "\n".join(lines) + "\n")
+        return str(p)
+
+    def test_plus_strand_phase_trims_5_prime(self, tmp_path):
+        gff = self._gff(tmp_path, "plus.gff", [
+            "chr1\t.\tgene\t2\t91\t.\t+\t.\tID=g1",
+            "chr1\t.\tmRNA\t2\t91\t.\t+\t.\tID=t1;Parent=g1",
+            "chr1\t.\tCDS\t2\t91\t.\t+\t1\tID=c1;Parent=t1",
+        ])
+        (gene,) = parse_annotations(gff)
+        # 0-based start 1 (GFF 2) + phase 1 -> 2; end unchanged
+        assert gene.cds_exons == [("chr1", 2, 91)]
+        assert gene.cds_length == 89
+
+    def test_minus_strand_phase_trims_high_end(self, tmp_path):
+        """On '-' the transcript's first CDS is the one with the highest end."""
+        gff = self._gff(tmp_path, "minus.gff", [
+            "chr1\t.\tgene\t2\t91\t.\t-\t.\tID=g2",
+            "chr1\t.\tmRNA\t2\t91\t.\t-\t.\tID=t2;Parent=g2",
+            "chr1\t.\tCDS\t2\t50\t.\t-\t0\tID=c2a;Parent=t2",
+            "chr1\t.\tCDS\t60\t91\t.\t-\t2\tID=c2b;Parent=t2",
+        ])
+        (gene,) = parse_annotations(gff)
+        assert gene.cds_exons == [("chr1", 1, 50), ("chr1", 59, 89)]
+
+    def test_phase_zero_and_dot_leave_exons_alone(self, tmp_path):
+        for i, phase in enumerate(("0", ".")):
+            gff = self._gff(tmp_path, f"zero{i}.gff", [
+                f"chr1\t.\tgene\t2\t91\t.\t+\t.\tID=g{i}",
+                f"chr1\t.\tmRNA\t2\t91\t.\t+\t.\tID=t{i};Parent=g{i}",
+                f"chr1\t.\tCDS\t2\t91\t.\t+\t{phase}\tID=c{i};Parent=t{i}",
+            ])
+            (gene,) = parse_annotations(gff)
+            assert gene.cds_exons == [("chr1", 1, 91)], f"phase={phase!r}"
+
+    def test_phase_spanning_a_short_first_exon(self, tmp_path):
+        """A phase larger than the first exon carries over into the next one."""
+        gff = self._gff(tmp_path, "short.gff", [
+            "chr1\t.\tgene\t2\t91\t.\t+\t.\tID=g5",
+            "chr1\t.\tmRNA\t2\t91\t.\t+\t.\tID=t5;Parent=g5",
+            "chr1\t.\tCDS\t2\t2\t.\t+\t2\tID=c5a;Parent=t5",
+            "chr1\t.\tCDS\t10\t91\t.\t+\t0\tID=c5b;Parent=t5",
+        ])
+        (gene,) = parse_annotations(gff)
+        # 1 bp exon consumed entirely, 1 more base trimmed off the next
+        assert gene.cds_exons == [("chr1", 10, 91)]
+
+
+class TestFileChecksum:
+    def test_edit_past_8kb_with_preserved_mtime_is_detected(self, tmp_path):
+        """size+mtime+first-8KB let rsync -a / cp -p / touch -r hide an edit."""
+        p = tmp_path / "big.gff"
+        p.write_bytes(b"A" * 60000)
+        before = _file_checksum(str(p))
+
+        stat = os.stat(p)
+        with open(p, "r+b") as f:
+            f.seek(59611)
+            f.write(b"B")  # same file size, well past the first 8 KB
+        os.utime(p, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+        assert _file_checksum(str(p)) != before
+
+    def test_mtime_change_alone_does_not_invalidate(self, tmp_path):
+        """Content hash: touching a file must not force a DB rebuild."""
+        p = tmp_path / "a.gff"
+        p.write_bytes(b"A" * 100)
+        before = _file_checksum(str(p))
+        os.utime(p, ns=(0, 0))
+        assert _file_checksum(str(p)) == before
+
+
+class TestMergeIntervals:
+    """Overlapping or repeated CDS features are merged when the exon list is
+    built, so every consumer of cds_exons sees each base once."""
+
+    def test_overlapping_merged(self):
+        assert _merge_intervals([("c", 0, 10), ("c", 5, 20)]) == [("c", 0, 20)]
+
+    def test_exact_duplicate_merged(self):
+        assert _merge_intervals([("c", 0, 10), ("c", 0, 10)]) == [("c", 0, 10)]
+
+    def test_disjoint_kept_separate(self):
+        assert _merge_intervals([("c", 30, 40), ("c", 0, 10)]) == [
+            ("c", 0, 10), ("c", 30, 40)]
+
+    def test_different_contigs_never_merged(self):
+        assert _merge_intervals([("c", 0, 10), ("d", 5, 20)]) == [
+            ("c", 0, 10), ("d", 5, 20)]
+
+    def test_gff_listing_a_cds_twice(self, tmp_path):
+        """The whole point: a duplicated CDS must not double the CDS length."""
+        p = tmp_path / "dup.gff"
+        p.write_text("##gff-version 3\n" + "\n".join([
+            "chr1\t.\tgene\t1\t90\t.\t+\t.\tID=g1",
+            "chr1\t.\tmRNA\t1\t90\t.\t+\t.\tID=t1;Parent=g1",
+            "chr1\t.\tCDS\t1\t90\t.\t+\t0\tID=c1;Parent=t1",
+            "chr1\t.\tCDS\t1\t90\t.\t+\t0\tID=c2;Parent=t1",
+        ]) + "\n")
+        (gene,) = parse_annotations(str(p))
+        assert gene.cds_exons == [("chr1", 0, 90)]
+        assert gene.cds_length == 90
+
+    def test_overlapping_cds_features(self, tmp_path):
+        p = tmp_path / "ov.gff"
+        p.write_text("##gff-version 3\n" + "\n".join([
+            "chr1\t.\tgene\t1\t90\t.\t+\t.\tID=g1",
+            "chr1\t.\tmRNA\t1\t90\t.\t+\t.\tID=t1;Parent=g1",
+            "chr1\t.\tCDS\t1\t60\t.\t+\t0\tID=c1;Parent=t1",
+            "chr1\t.\tCDS\t31\t90\t.\t+\t0\tID=c2;Parent=t1",
+        ]) + "\n")
+        (gene,) = parse_annotations(str(p))
+        assert gene.cds_exons == [("chr1", 0, 90)]
