@@ -167,7 +167,13 @@ class TestRealDataRegression:
 
 @pytest.mark.slow
 class TestRealDataKeepMultiallelic:
-    """Verify --keep-multiallelic reproduces the old (merge) behavior."""
+    """Pin --keep-multiallelic output.
+
+    Values were re-pinned when allele observations stopped being overwritten
+    across records naming the same allele (haplotype-decomposed VCF): see
+    TestHaplotypeDecomposedRecords below. Only --keep-multiallelic runs are
+    affected — the default mode drops these sites as multiallelic.
+    """
 
     def test_genome_wide_summary_keep_multiallelic(self, real_results_keep_multiallelic):
         """Pin genome-wide values with --keep-multiallelic."""
@@ -175,9 +181,9 @@ class TestRealDataKeepMultiallelic:
         row = summary_df.iloc[0]
 
         assert row["total_genes"] == 400
-        assert abs(row["genome_piN"] - 0.001047) < 1e-6
-        assert abs(row["genome_piS"] - 0.004088) < 1e-6
-        assert abs(row["genome_piN_piS"] - 0.2561) < 1e-4
+        assert abs(row["genome_piN"] - 0.001051) < 1e-6
+        assert abs(row["genome_piS"] - 0.004082) < 1e-6
+        assert abs(row["genome_piN_piS"] - 0.2574) < 1e-4
 
     def test_multiallelic_gene_apisum_017038_keep(self, real_results_keep_multiallelic):
         """Pin Apisum_017038 with --keep-multiallelic (+ strand)."""
@@ -185,12 +191,12 @@ class TestRealDataKeepMultiallelic:
         g = gene_df[gene_df["gene_id"].str.contains("Apisum_017038")].iloc[0]
 
         assert g["n_codons"] == 619
-        assert g["n_variants"] == 45
-        assert abs(g["N_sites"] - 1420.300912) < 1e-4
-        assert abs(g["S_sites"] - 436.699088) < 1e-4
-        assert abs(g["piN"] - 0.007153) < 1e-5
-        assert abs(g["piS"] - 0.014126) < 1e-5
-        assert abs(g["piN_piS"] - 0.506357) < 1e-4
+        assert g["n_variants"] == 43
+        assert abs(g["N_sites"] - 1420.291775) < 1e-4
+        assert abs(g["S_sites"] - 436.708225) < 1e-4
+        assert abs(g["piN"] - 0.007211) < 1e-5
+        assert abs(g["piS"] - 0.014125) < 1e-5
+        assert abs(g["piN_piS"] - 0.510521) < 1e-4
 
     def test_multiallelic_gene_apisum_003665_keep(self, real_results_keep_multiallelic):
         """Pin Apisum_003665 with --keep-multiallelic (- strand)."""
@@ -198,12 +204,12 @@ class TestRealDataKeepMultiallelic:
         g = gene_df[gene_df["gene_id"].str.contains("Apisum_003665")].iloc[0]
 
         assert g["n_codons"] == 215
-        assert g["n_variants"] == 22
+        assert g["n_variants"] == 21
         assert abs(g["N_sites"] - 494.879603) < 1e-4
         assert abs(g["S_sites"] - 150.120397) < 1e-4
-        assert abs(g["piN"] - 0.008564) < 1e-5
+        assert abs(g["piN"] - 0.008274) < 1e-5
         assert abs(g["piS"] - 0.017400) < 1e-5
-        assert abs(g["piN_piS"] - 0.492173) < 1e-4
+        assert abs(g["piN_piS"] - 0.475538) < 1e-4
 
     def test_high_variant_gene_keep(self, real_results_keep_multiallelic):
         """Pin Apisum_003662 with --keep-multiallelic."""
@@ -211,11 +217,11 @@ class TestRealDataKeepMultiallelic:
         g = gene_df[gene_df["gene_id"].str.contains("Apisum_003662")].iloc[0]
 
         assert g["n_codons"] == 418
-        assert g["n_variants"] == 93
+        assert g["n_variants"] == 87
         assert g["n_poly_codons"] == 77
-        assert abs(g["piN"] - 0.014251) < 1e-5
-        assert abs(g["piS"] - 0.013936) < 1e-5
-        assert abs(g["piN_piS"] - 1.022581) < 1e-4
+        assert abs(g["piN"] - 0.013910) < 1e-5
+        assert abs(g["piS"] - 0.013879) < 1e-5
+        assert abs(g["piN_piS"] - 1.002267) < 1e-4
 
     def test_more_variants_with_keep_multiallelic(self, real_results, real_results_keep_multiallelic):
         """--keep-multiallelic should have >= variants than default for affected genes."""
@@ -226,3 +232,45 @@ class TestRealDataKeepMultiallelic:
         total_keep = gene_df_keep["n_variants"].sum()
         assert total_keep > total_default, \
             f"Expected more variants with --keep-multiallelic ({total_keep}) than default ({total_default})"
+
+
+@pytest.fixture(scope="module")
+def real_variant_table(tmp_path_factory):
+    """Run pie once with --keep-multiallelic --variant-table; cache the table."""
+    _skip_if_no_data()
+    ref = REAL_DATA_DIR / "Acyrthosiphon_pisum.fa"
+    gff = REAL_DATA_DIR / "Acyrthosiphon_pisum.gff"
+    vcf = REAL_DATA_DIR / "SRR27175631.filtered.snps.vcf.gz"
+
+    outdir = tmp_path_factory.mktemp("real_variant_table")
+    result = CliRunner().invoke(main, [
+        "pool", "--vcf", str(vcf), "--gff", str(gff), "--fasta", str(ref),
+        "--outdir", str(outdir), "--keep-multiallelic", "--variant-table",
+    ])
+    assert result.exit_code == 0, result.output
+    return pd.read_csv(outdir / "variant_results.tsv", sep="\t")
+
+
+@pytest.mark.slow
+class TestHaplotypeDecomposedRecords:
+    """Repeated alleles are summed — see VariantReader.fetch.
+
+    chr3:1714 in this dataset is `G>A` twice, AO 56 and 22, RO 9: one allele
+    on two haplotype backgrounds, so the site's A frequency is 78/87.
+    """
+
+    def test_repeated_allele_is_summed(self, real_variant_table):
+        site = real_variant_table[
+            (real_variant_table["chrom"].astype(str) == "3")
+            & (real_variant_table["pos"] == 1714)]
+        assert len(site) == 1, "one row per allele, not one per VCF record"
+        row = site.iloc[0]
+        assert row["ao"] == 78  # 56 + 22
+        assert row["ro"] == 9
+        assert row["dp"] == 87
+        assert abs(row["af"] - 78 / 87) < 1e-6
+
+    def test_no_allele_appears_twice_at_a_position(self, real_variant_table):
+        counts = real_variant_table.groupby(
+            ["chrom", "pos", "ref", "alt"]).size()
+        assert (counts == 1).all(), f"{(counts > 1).sum()} duplicated alleles"

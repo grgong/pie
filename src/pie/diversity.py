@@ -207,14 +207,15 @@ def build_allele_freq_array(
         ref_base = codons[codon_idx][pos_in_codon]
         ref_idx = _BASE_TO_IDX[ref_base]
 
-        # Set each alt allele frequency directly
+        # Accumulate, don't assign: the reference below is 1 - sum(alt
+        # freqs), so two records naming the same allele must add up here too.
         total_alt_freq = 0.0
         for var in var_list:
             alt = var.alt
             if strand == "-":
                 alt = _COMPLEMENT_BASE[alt]
             alt_idx = _BASE_TO_IDX[alt]
-            freq[codon_idx, pos_in_codon, alt_idx] = var.freq
+            freq[codon_idx, pos_in_codon, alt_idx] += var.freq
             total_alt_freq += var.freq
 
         # Reference = 1 - sum(alt frequencies)
