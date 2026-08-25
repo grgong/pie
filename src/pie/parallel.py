@@ -1,6 +1,5 @@
 """Gene-level multiprocessing for parallel piN/piS computation."""
 
-import atexit
 import logging
 import warnings
 from multiprocessing import Pool
@@ -11,6 +10,9 @@ from pie.vcf import IndividualVariantReader, VariantReader, get_vcf_contigs
 from pie.diversity import compute_gene_diversity, GeneResult
 
 log = logging.getLogger(__name__)
+
+_ref = None
+_vcf = None
 
 
 def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
@@ -42,14 +44,24 @@ def _worker_init(fasta_path, vcf_path, min_freq, min_depth, min_qual,
         )
         _n_samples = None
 
-    atexit.register(_worker_cleanup)
-
 
 def _worker_cleanup():
-    """Close per-worker file handles."""
+    """Close per-worker file handles and drop the references.
+
+    Only the parent calls this. A pool worker has no usable shutdown hook —
+    `Pool.__exit__` terminates workers with SIGTERM, and even on a clean
+    close() the child leaves via `os._exit()`, so `atexit` callbacks never
+    run. Worker handles are released when the process dies; anything the
+    reader would have reported at close() travels back in `FilterStats`
+    instead (see `_report_reader_diagnostics`).
+    """
     global _ref, _vcf
-    _ref.close()
-    _vcf.close()
+    if _ref is not None:
+        _ref.close()
+        _ref = None
+    if _vcf is not None:
+        _vcf.close()
+        _vcf = None
 
 
 def _process_gene(gene: GeneModel) -> GeneResult:
@@ -98,11 +110,17 @@ def run_parallel(
         )
 
     # Pre-flight: verify contig name overlap between annotation and VCF.
-    # Skip when VCF has no ##contig headers (seqnames empty) — analysis
-    # proceeds normally and fetch() returns no variants for each gene.
+    # A VCF with no ##contig headers (seqnames empty) can only be warned
+    # about: the analysis proceeds and fetch() returns no variants per gene.
     gene_contigs = {g.chrom for g in genes}
     vcf_contigs = get_vcf_contigs(vcf_path)
-    if vcf_contigs:
+    if not vcf_contigs:
+        log.warning(
+            "%s declares no contigs in its header or index; contig-name "
+            "overlap with the annotation cannot be checked and every region "
+            "query will come back empty if the names disagree.", vcf_path,
+        )
+    else:
         shared = gene_contigs & vcf_contigs
         if not shared:
             missing_sample = sorted(gene_contigs)[:5]
@@ -138,6 +156,12 @@ def run_parallel(
         finally:
             _worker_cleanup()
     else:
+        # Pre-flight in the parent: Pool respawns a worker whose initializer
+        # raises, forever, so a bad FASTA/VCF path, a missing .fai/.tbi or an
+        # unknown --sample would hang rather than fail.
+        _worker_init(*init_args)
+        _worker_cleanup()
+
         with Pool(
             processes=threads,
             initializer=_worker_init,
@@ -156,5 +180,27 @@ def run_parallel(
             n_stop_genes, len(results), total_stop_codons,
         )
 
+    _report_reader_diagnostics(results)
+
     results.sort(key=lambda r: (r.chrom, r.start))
     return results
+
+
+def _report_reader_diagnostics(results: list[GeneResult]) -> None:
+    """Warn once about VCF-reader observations pooled from every worker.
+
+    These used to be logged by the reader itself at close() — which in a pool
+    run means logged by nobody, since workers never reach a shutdown hook.
+    """
+    n_non_diploid = sum(r.filter_stats.n_non_diploid for r in results)
+    if n_non_diploid:
+        log.warning(
+            "Treated %d non-diploid genotype call(s) as uncalled — pie "
+            "assumes diploid data. Haploid records (e.g. hemizygous male "
+            "sex chromosomes) are not supported; call them as diploid or "
+            "restrict the analysis to diploid samples.",
+            n_non_diploid,
+        )
+    n_star_alleles = sum(r.filter_stats.n_star_alleles for r in results)
+    if n_star_alleles:
+        log.info("Skipped %d non-SNP ALT alleles (*, indels)", n_star_alleles)

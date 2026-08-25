@@ -1,6 +1,28 @@
 import os
 import shutil
+
+import pytest
+
 from pie.vcf import ensure_indexed, get_vcf_contigs, VariantReader, IndividualVariantReader
+from tests.helpers import bgzip_and_index
+
+
+_GT_FORMAT = '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">'
+_AD_FORMAT = '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depth">'
+
+
+def _write_vcf(tmp_path, name, samples, rows, fmt=_GT_FORMAT):
+    """Minimal single-contig VCF with one FORMAT field. Returns .vcf.gz path."""
+    p = tmp_path / name
+    p.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        + fmt + "\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"
+        + "\t".join(samples) + "\n"
+        + "".join(row + "\n" for row in rows)
+    )
+    return bgzip_and_index(p)
 
 
 class TestEnsureIndexed:
@@ -513,3 +535,84 @@ class TestIndividualMultiallelic:
             # Both ALTs at pos 7 have freq=0.375 < 0.40
             ma = [v for v in variants if v.pos == 6]
             assert len(ma) == 0
+
+
+class TestNonDiploidGenotypes:
+    """Haploid calls are uncalled, not fabricated — see IndividualVariantReader."""
+
+    def _vcf(self, tmp_path, name, samples, row):
+        return _write_vcf(tmp_path, name, samples, [row])
+
+    def test_all_haploid_site_is_uncalled(self, tmp_path):
+        """3 hemizygous males, GT 0/0/1: no fabricated 0.167 (true AF is 1/3)."""
+        path = self._vcf(tmp_path, "hap.vcf", ["m1", "m2", "m3"],
+                         "chr1\t100\t.\tA\tT\t99\tPASS\t.\tGT\t0\t0\t1")
+        with IndividualVariantReader(path, min_freq=0.0, min_qual=0.0,
+                                     min_call_rate=0.0, min_an=1) as reader:
+            assert reader.fetch("chr1", 0, 1000).variants == []
+
+    def test_mixed_ploidy_counts_only_diploid_samples(self, tmp_path):
+        """2 haploid + 1 diploid 0/1: AF from the diploid sample alone."""
+        path = self._vcf(tmp_path, "mixed.vcf", ["m1", "m2", "d1"],
+                         "chr1\t100\t.\tA\tT\t99\tPASS\t.\tGT\t0\t1\t0/1")
+        with IndividualVariantReader(path, min_freq=0.0, min_qual=0.0,
+                                     min_call_rate=0.0, min_an=1) as reader:
+            (var,) = reader.fetch("chr1", 0, 1000).variants
+            assert var.freq == 0.5
+            assert var.depth == 2          # AN over diploid samples only
+            assert var.call_rate == 1 / 3  # haploid calls lower the call rate
+
+    def test_haploid_calls_are_counted_in_filter_stats(self, tmp_path):
+        """The count rides home on FetchResult so a pool parent can warn once."""
+        path = self._vcf(tmp_path, "warn.vcf", ["m1", "m2", "d1"],
+                         "chr1\t100\t.\tA\tT\t99\tPASS\t.\tGT\t0\t1\t0/1")
+        with IndividualVariantReader(path, min_freq=0.0, min_qual=0.0,
+                                     min_call_rate=0.0, min_an=1) as reader:
+            assert reader.fetch("chr1", 0, 1000).stats.n_non_diploid == 2
+
+    def test_diploid_unaffected(self, tmp_path):
+        path = self._vcf(tmp_path, "dip.vcf", ["d1", "d2", "d3"],
+                         "chr1\t100\t.\tA\tT\t99\tPASS\t.\tGT\t0/0\t0/0\t0/1")
+        with IndividualVariantReader(path, min_freq=0.0, min_qual=0.0,
+                                     min_call_rate=0.0, min_an=1) as reader:
+            (var,) = reader.fetch("chr1", 0, 1000).variants
+            assert var.freq == pytest.approx(1 / 6)
+            assert var.depth == 6
+
+
+class TestRepeatedAlleleAtOnePosition:
+    """Repeated alleles are summed — see VariantReader.fetch."""
+
+    @staticmethod
+    def _ad_vcf(tmp_path, name, rows):
+        return _write_vcf(tmp_path, name, ["S1"], rows, fmt=_AD_FORMAT)
+
+    @pytest.fixture
+    def repeated_allele_vcf(self, tmp_path):
+        return self._ad_vcf(tmp_path, "dup_allele.vcf", [
+            "chr1\t100\t.\tG\tA\t99\tPASS\t.\tAD\t9,56",
+            "chr1\t100\t.\tG\tA\t99\tPASS\t.\tAD\t9,22",
+        ])
+
+    def test_observations_are_summed(self, repeated_allele_vcf):
+        with VariantReader(repeated_allele_vcf, min_freq=0.0, min_depth=0,
+                           min_qual=0.0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 1000).variants
+        assert len(variants) == 1, "one Variant per allele, not per record"
+        (var,) = variants
+        assert var.ao == 78    # 56 + 22
+        assert var.ro == 9
+        assert var.depth == 87  # ro + total alt, unchanged
+        assert var.freq == pytest.approx(78 / 87)
+
+    def test_distinct_alts_still_kept_apart(self, tmp_path):
+        """Genuine multiallelic records must not be collapsed."""
+        path = self._ad_vcf(tmp_path, "multi.vcf", [
+            "chr1\t100\t.\tG\tA\t99\tPASS\t.\tAD\t9,56",
+            "chr1\t100\t.\tG\tC\t99\tPASS\t.\tAD\t9,22",
+        ])
+        with VariantReader(path, min_freq=0.0, min_depth=0,
+                           min_qual=0.0, keep_multiallelic=True) as reader:
+            variants = reader.fetch("chr1", 0, 1000).variants
+        assert sorted(v.alt for v in variants) == ["A", "C"]
+        assert {v.depth for v in variants} == {87}

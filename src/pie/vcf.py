@@ -1,6 +1,7 @@
 """VCF parsing, filtering, and auto-indexing via cyvcf2."""
 import os
 import logging
+from collections import Counter
 from dataclasses import dataclass
 from cyvcf2 import VCF
 import pysam
@@ -19,9 +20,12 @@ class _BaseVariantReader:
         """Call at end of subclass __init__ after self._vcf is set."""
         self._contigs: frozenset[str] = frozenset(self._vcf.seqnames)
         self._missing_contigs: set[str] = set()
-        self._n_star_alleles = 0
+        self._closed = False
 
     def close(self):
+        if self._closed:
+            return
+        self._closed = True
         if self._missing_contigs:
             log.warning(
                 "Skipped %d contig(s) absent from VCF: %s",
@@ -29,9 +33,6 @@ class _BaseVariantReader:
                 ", ".join(sorted(self._missing_contigs)[:20])
                 + (" ..." if len(self._missing_contigs) > 20 else ""),
             )
-        if self._n_star_alleles:
-            log.info("Skipped %d non-SNP ALT alleles (*, indels)",
-                     self._n_star_alleles)
         self._vcf.close()
 
     def __enter__(self):
@@ -73,6 +74,12 @@ class FilterStats:
     n_filtered_multiallelic: int = 0
     n_filtered_call_rate: int = 0
     n_filtered_an: int = 0
+    # Reader diagnostics. They live here, per fetch, rather than on the reader
+    # because pool workers never report reader state back: multiprocessing
+    # children exit via os._exit()/SIGTERM, so nothing registered for their
+    # shutdown runs. FilterStats rides home on each GeneResult instead.
+    n_star_alleles: int = 0
+    n_non_diploid: int = 0
 
     def __iadd__(self, other: "FilterStats") -> "FilterStats":
         self.n_total += other.n_total
@@ -84,6 +91,8 @@ class FilterStats:
         self.n_filtered_multiallelic += other.n_filtered_multiallelic
         self.n_filtered_call_rate += other.n_filtered_call_rate
         self.n_filtered_an += other.n_filtered_an
+        self.n_star_alleles += other.n_star_alleles
+        self.n_non_diploid += other.n_non_diploid
         return self
 
 
@@ -193,7 +202,7 @@ class VariantReader(_BaseVariantReader):
             for alt_idx, alt_allele in enumerate(record.ALT):
                 # Per-allele SNP check: single valid nucleotide
                 if alt_allele not in _VALID_BASES:
-                    self._n_star_alleles += 1
+                    stats.n_star_alleles += 1
                     stats.n_filtered_not_snp += 1
                     continue
                 depth, freq, ref_count, alt_count = (
@@ -244,14 +253,25 @@ class VariantReader(_BaseVariantReader):
                     if total_depth < self._min_depth:
                         stats.n_filtered_depth += 1
                         continue
-                    for r in group:
-                        new_freq = (r[6] / total_depth
+                    # Sum observations across records naming the *same*
+                    # allele. A haplotype-decomposed VCF (FreeBayes +
+                    # vcfallelicprimitives, bcftools norm -a) emits one record
+                    # per haplotype background, so one SNP can appear twice
+                    # with different AO — one allele on two backgrounds, not
+                    # two competing alleles. total_depth already adds both, so
+                    # emitting them separately would leave the numerator short
+                    # of its own denominator.
+                    by_allele: Counter[tuple[str, str]] = Counter()
+                    for _p, r_ref, r_alt, _f, _d, _rc, r_alt_c in group:
+                        by_allele[(r_ref, r_alt)] += r_alt_c
+                    for (allele_ref, allele_alt), alt_c in by_allele.items():
+                        new_freq = (alt_c / total_depth
                                     if total_depth > 0 else 0.0)
                         if new_freq >= self._min_freq:
                             variants.append(Variant(
-                                pos=r[0], ref=r[1], alt=r[2],
+                                pos=pos, ref=allele_ref, alt=allele_alt,
                                 freq=new_freq, depth=total_depth,
-                                ao=r[6], ro=ref_count))
+                                ao=alt_c, ro=ref_count))
                         else:
                             stats.n_filtered_freq += 1
                 else:
@@ -329,9 +349,14 @@ class IndividualVariantReader(_BaseVariantReader):
     diploid samples.  Exposes the same ``fetch()`` interface as
     ``VariantReader`` so downstream code is unchanged.
 
-    Note: Only diploid genotypes are supported.  Haploid calls (e.g. male
-    sex-chromosome genotypes represented as ``[allele, -2]`` in cyvcf2) are
-    treated as uncalled and silently skipped.
+    Note: Only diploid genotypes are supported.  cyvcf2 reports a haploid
+    call as ``[allele, phased]`` (two elements) rather than the diploid
+    ``[a1, a2, phased]``, so such calls are detected by genotype length,
+    counted in ``FilterStats.n_non_diploid`` and treated as uncalled; the
+    caller sums that count and warns once (see ``run_parallel``, the only
+    place that sees every worker's counts).  They lower the site's call rate
+    and are therefore subject to ``--min-call-rate`` like any other missing
+    data.
     """
 
     def __init__(self, vcf_path: str, samples: list[str] | None = None,
@@ -405,6 +430,11 @@ class IndividualVariantReader(_BaseVariantReader):
             alt_counts = [0] * n_alts
 
             for gt in record.genotypes:  # [allele1, allele2, is_phased]
+                # One entry per ploidy plus the phase flag, so a diploid call
+                # is exactly 3 long.  See the class docstring.
+                if len(gt) != 3:
+                    stats.n_non_diploid += 1
+                    continue
                 a1, a2 = gt[0], gt[1]
                 if a1 < 0 or a2 < 0:
                     continue
@@ -431,7 +461,7 @@ class IndividualVariantReader(_BaseVariantReader):
 
             for alt_idx, alt_allele in enumerate(record.ALT):
                 if alt_allele not in _VALID_BASES:
-                    self._n_star_alleles += 1
+                    stats.n_star_alleles += 1
                     stats.n_filtered_not_snp += 1
                     continue
                 ac = alt_counts[alt_idx]

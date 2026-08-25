@@ -30,18 +30,25 @@ class GeneModel:
         return sum(end - start for _, start, end in self.cds_exons)
 
 
-def _file_checksum(path: str) -> str:
-    """Fast checksum using file size + mtime + first 8KB hash."""
-    stat = os.stat(path)
-    h = hashlib.md5()
-    h.update(f"{stat.st_size}:{stat.st_mtime_ns}".encode())
-    with open(path, "rb") as f:
-        h.update(f.read(8192))
-    return h.hexdigest()
-
-
 _CHECKSUM_TABLE = "pie_cache"
 _CHECKSUM_KEY = "checksum"
+
+
+def _file_checksum(path: str) -> str:
+    """Content checksum of the annotation file.
+
+    Hashes the whole file. Size + mtime are not enough on their own: ``rsync
+    -a``, ``cp -p``, ``tar -x`` and ``touch -r`` all preserve mtime, so an
+    edited GFF could pass validation and a stale DB be reused silently.
+    Hashing only a prefix has the same hole for any edit past the prefix.
+    Full MD5 costs well under a second even for a 178 MB GFF, which is
+    negligible next to building the DB it guards.
+    """
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _resolve_cache_path(gff_path: str) -> str | None:
@@ -136,31 +143,101 @@ def _load_or_create_db(path: str) -> gffutils.FeatureDB:
     return db
 
 
+def _merge_intervals(
+    exons: list[tuple[str, int, int]],
+) -> list[tuple[str, int, int]]:
+    """Merge overlapping/adjacent (chrom, start, end) intervals, ascending."""
+    merged: list[tuple[str, int, int]] = []
+    for chrom, start, end in sorted(exons):
+        if merged and merged[-1][0] == chrom and start <= merged[-1][2]:
+            merged[-1] = (chrom, merged[-1][1], max(merged[-1][2], end))
+        else:
+            merged.append((chrom, start, end))
+    return merged
+
+
+def _canonical_exons(
+    cds: list[tuple[str, int, int, str]], strand: str
+) -> tuple[list[tuple[str, int, int]], int]:
+    """Normalise a transcript's CDS features into pie's exon list.
+
+    Every consumer of `GeneModel.cds_exons` depends on both normalisations:
+
+    * **Overlap.** Overlapping or repeated CDS features (a hand-edited GFF,
+      or one listing a CDS twice) would otherwise have their bases
+      concatenated twice by `extract_codons` — shifting the reading frame —
+      and their variants fetched once per covering exon.
+    * **Phase.** GFF3 column 8 gives, for the first CDS of a transcript, the
+      number of bases to remove from its 5' end to reach the first complete
+      codon. It is non-zero for 5'-partial models (no annotated start codon,
+      or one running off a contig edge), routine in NCBI/EGAPx output, and
+      reading straight through from the first base instead translates the
+      whole transcript out of frame.
+
+    Only the *first* CDS's phase is honoured. Internal CDS phases are assumed
+    consistent with the exon lengths and are not used to resynchronise the
+    reading frame: an annotation whose internal phases disagree with its exon
+    structure is an annotation problem, and letting it surface as an internal
+    stop codon (already counted and reported per gene) is more useful than
+    silently patching the frame at every exon boundary and hiding it.
+
+    Returns the ascending exon list and the phase that was applied.
+    """
+    ordered = sorted(cds, key=lambda e: e[1], reverse=(strand == "-"))
+    frame = ordered[0][3]
+    phase = int(frame) if frame in ("1", "2") else 0
+
+    exons = _merge_intervals([(c, s, e) for c, s, e, _f in ordered])
+    if strand == "-":
+        exons.reverse()
+
+    trimmed = []
+    remaining = phase
+    for chrom, start, end in exons:
+        if remaining:
+            n = min(remaining, end - start)
+            remaining -= n
+            if strand == "-":
+                end -= n
+            else:
+                start += n
+            if end <= start:
+                continue
+        trimmed.append((chrom, start, end))
+    return sorted(trimmed, key=lambda e: e[1]), phase
+
+
 def parse_annotations(path: str) -> list[GeneModel]:
     """Parse GFF3 or GTF, select longest isoform per gene.
+
+    CDS exons are normalised by `_canonical_exons`: overlaps merged and the
+    GFF `phase` of the transcript's first CDS honoured.
 
     Returns list sorted by (chrom, start).
     """
     db = _load_or_create_db(path)
 
     genes = []
+    n_phased = 0
     for gene in db.all_features(featuretype="gene"):
         gene_id = gene.id
         chrom = gene.seqid
         strand = gene.strand
 
-        # Collect CDS features per transcript
-        transcript_cds: dict[str, list[tuple[str, int, int]]] = defaultdict(list)
+        # Collect CDS features per transcript, keeping the GFF phase column
+        transcript_cds: dict[str, list[tuple[str, int, int, str]]] = defaultdict(list)
         for tx in db.children(
             gene, featuretype=["mRNA", "transcript"], order_by="start"
         ):
             for cds in db.children(tx, featuretype="CDS", order_by="start"):
-                transcript_cds[tx.id].append((cds.seqid, cds.start - 1, cds.end))
+                transcript_cds[tx.id].append(
+                    (cds.seqid, cds.start - 1, cds.end, cds.frame))
 
         # Fallback: CDS directly under gene (no transcript intermediate)
         if not transcript_cds:
             for cds in db.children(gene, featuretype="CDS", order_by="start"):
-                transcript_cds[gene_id].append((cds.seqid, cds.start - 1, cds.end))
+                transcript_cds[gene_id].append(
+                    (cds.seqid, cds.start - 1, cds.end, cds.frame))
 
         if not transcript_cds:
             continue
@@ -168,9 +245,12 @@ def parse_annotations(path: str) -> list[GeneModel]:
         # Pick transcript with longest total CDS
         best_tid = max(
             transcript_cds,
-            key=lambda tid: sum(e - s for _, s, e in transcript_cds[tid]),
+            key=lambda tid: sum(e - s for _, s, e, _f in transcript_cds[tid]),
         )
-        best_exons = sorted(transcript_cds[best_tid], key=lambda x: x[1])
+        best_exons, phase = _canonical_exons(transcript_cds[best_tid], strand)
+        n_phased += bool(phase)
+        if not best_exons:
+            continue
 
         genes.append(
             GeneModel(
@@ -182,6 +262,12 @@ def parse_annotations(path: str) -> list[GeneModel]:
                 strand=strand,
                 cds_exons=best_exons,
             )
+        )
+
+    if n_phased:
+        log.info(
+            "Trimmed a 5' phase offset on %d of %d gene model(s) "
+            "(5'-partial CDS)", n_phased, len(genes),
         )
 
     genes.sort(key=lambda g: (g.chrom, g.start))

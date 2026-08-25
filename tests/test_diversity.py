@@ -603,3 +603,20 @@ class TestComputeGeneDiversityVariantRecords:
             result = compute_gene_diversity(gene1, ref, vcf)
 
         assert result.variant_records is None
+
+
+class TestRepeatedAlleleFrequencies:
+    """Repeated alleles accumulate — see build_allele_freq_array."""
+
+    def test_same_alt_twice_accumulates(self):
+        codons = ["ATG"]
+        positions = [("chr1", 0, 1, 2)]
+        variants = [
+            Variant(pos=0, ref="A", alt="G", freq=0.6437, depth=87),
+            Variant(pos=0, ref="A", alt="G", freq=0.2529, depth=87),
+        ]
+        freq = build_allele_freq_array(codons, positions, variants, "+")
+        assert freq[0, 0, 2] == pytest.approx(0.8966, abs=1e-4)  # G
+        assert freq[0, 0, 0] == pytest.approx(0.1034, abs=1e-4)  # A (ref)
+        assert freq[0, 0].sum() == pytest.approx(1.0)
+
