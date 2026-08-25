@@ -99,6 +99,10 @@ def write_window_results(
     intron. Those are skipped: writing them as piN=0.0/piS=0.0 would be
     indistinguishable from a real measurement of zero, and at the default
     100 bp step a gene with a 100 kb intron emits ~1000 of them.
+
+    Consecutive rows of a gene are therefore not necessarily adjacent
+    windows; consumers must not join them blindly (sliding_window_plot()
+    breaks its lines at these gaps).
     """
     rows = []
     for r in results:

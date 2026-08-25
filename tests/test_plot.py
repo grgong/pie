@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 from pie.plot import (
     manhattan_plot, scatter_plot, histogram_plot, boxplot_plot, sliding_window_plot,
-    _apply_base_qc, _filter_ratio, _filter_metric, _require_columns,
+    _apply_base_qc, _filter_ratio, _filter_metric, _require_columns, _window_segments,
 )
 
 
@@ -331,6 +331,66 @@ class TestSlidingWindowPlot:
         out = str(tmp_path / "sliding_window.png")
         sliding_window_plot(str(tsv), out)
         assert (tmp_path / "sliding_window.png").exists()
+
+    def test_intron_gap_splits_the_line(self, tmp_path):
+        """Windows skipped over an intron must break the line, not be bridged.
+
+        write_window_results() omits intron-only windows, so gA's rows jump
+        from 200 to 9000 with nothing measured in between.
+        """
+        df = pd.DataFrame({
+            "chrom": ["chr1"] * 5,
+            "win_start": [0, 100, 200, 9000, 9100],
+            "win_end":   [100, 200, 300, 9100, 9200],
+            "gene_id":   ["gA"] * 5,
+            "piN_piS":   [0.5, 0.8, 1.0, 1.5, 1.1],
+        })
+        segments = _window_segments(df)
+        assert segments.tolist() == [1, 1, 1, 2, 2]
+
+        tsv = tmp_path / "window_results.tsv"
+        df.to_csv(tsv, sep="\t", index=False)
+        out = str(tmp_path / "sliding_window.png")
+        sliding_window_plot(str(tsv), out)
+        assert (tmp_path / "sliding_window.png").exists()
+
+    def test_segments_never_span_genes(self, tmp_path):
+        """Adjacent win_starts in different genes are still separate lines."""
+        df = pd.DataFrame({
+            "chrom": ["chr1"] * 4,
+            "win_start": [0, 100, 200, 300],
+            "win_end":   [100, 200, 300, 400],
+            "gene_id":   ["gA", "gA", "gB", "gB"],
+            "piN_piS":   [0.5, 0.8, 1.0, 1.5],
+        })
+        assert _window_segments(df).tolist() == [1, 1, 2, 2]
+
+    def test_isolated_window_is_plotted_as_a_point(self, tmp_path):
+        """A one-window segment draws no line, so it must not vanish."""
+        df = pd.DataFrame({
+            "chrom": ["chr1"] * 3,
+            "win_start": [0, 100, 9000],
+            "win_end":   [100, 200, 9100],
+            "gene_id":   ["gA"] * 3,
+            "piN_piS":   [0.5, 0.8, 1.2],
+        })
+        assert _window_segments(df).tolist() == [1, 1, 2]
+        tsv = tmp_path / "window_results.tsv"
+        df.to_csv(tsv, sep="\t", index=False)
+        out = str(tmp_path / "sliding_window.png")
+        sliding_window_plot(str(tsv), out)
+        assert (tmp_path / "sliding_window.png").stat().st_size > 0
+
+    def test_single_window_per_gene(self, tmp_path):
+        """No inferable step (every diff is NaN): one segment per gene."""
+        df = pd.DataFrame({
+            "chrom": ["chr1"] * 2,
+            "win_start": [0, 9000],
+            "win_end":   [100, 9100],
+            "gene_id":   ["gA", "gB"],
+            "piN_piS":   [0.5, 1.2],
+        })
+        assert _window_segments(df).tolist() == [1, 2]
 
     def test_rejects_bad_tsv(self, tmp_path):
         """sliding_window_plot raises on missing columns."""

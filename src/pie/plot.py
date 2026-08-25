@@ -366,6 +366,25 @@ def boxplot_plot(
     _save_plot(p, output_path, dpi)
 
 
+def _window_segments(df: pd.DataFrame) -> pd.Series:
+    """Group rows into runs of consecutive windows, one id per run.
+
+    A gene's rows are not necessarily contiguous: write_window_results()
+    drops windows falling entirely inside an intron, and the caller's piN/piS
+    filters drop more. Grouping the line by gene_id would bridge those holes,
+    drawing a trend across sequence where nothing was measured, so a run ends
+    wherever win_start jumps by more than one step. The step is read off the
+    data — windows are emitted at fixed intervals — so no window-size
+    argument has to be threaded through to the plot.
+
+    Expects df sorted by (gene_id, win_start) with a fresh RangeIndex.
+    """
+    gaps = df.groupby("gene_id", sort=False)["win_start"].diff()
+    window_step = gaps.min()  # NaN only if every gene has a single window
+    starts_run = (df["gene_id"] != df["gene_id"].shift()) | (gaps > window_step)
+    return starts_run.cumsum()
+
+
 def sliding_window_plot(
     input_path: str,
     output_path: str,
@@ -393,16 +412,25 @@ def sliding_window_plot(
     df["chrom"] = pd.Categorical(df["chrom"], categories=chroms, ordered=True)
     df["win_mid"] = (df["win_start"] + df["win_end"]) / 2
 
+    df = df.sort_values(["gene_id", "win_start"]).reset_index(drop=True)
+    df["segment"] = _window_segments(df)
+
+    # Segments of one window draw no line, so mark them with a point; without
+    # this, breaking the lines would make isolated windows disappear.
+    singletons = df[df.groupby("segment")["segment"].transform("size") == 1]
+
     if height is None:
         height = 1.5 * len(chroms) + 0.5  # 1.5 in per panel + padding
 
     p = (
-        ggplot(df, aes(x="win_mid", y="piN_piS", group="gene_id"))
+        ggplot(df, aes(x="win_mid", y="piN_piS", group="segment"))
         + geom_line(color="#0072B2", alpha=0.8, size=0.3)
         + geom_hline(yintercept=1.0, linetype="dashed", color="red", alpha=0.6, size=0.3)
         + facet_wrap("chrom", scales="free_x", ncol=1)
         + labs(x="Genomic position (bp)", y="piN/piS", title="Sliding window piN/piS")
         + _base_theme(width, height, dpi)
     )
+    if not singletons.empty:
+        p = p + geom_point(data=singletons, color="#0072B2", alpha=0.8, size=0.3)
 
     _save_plot(p, output_path, dpi)
