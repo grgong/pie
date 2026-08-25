@@ -1,4 +1,3 @@
-import logging
 import os
 import shutil
 
@@ -563,15 +562,13 @@ class TestNonDiploidGenotypes:
             assert var.depth == 2          # AN over diploid samples only
             assert var.call_rate == 1 / 3  # haploid calls lower the call rate
 
-    def test_haploid_calls_are_warned_about_on_close(self, tmp_path, caplog):
+    def test_haploid_calls_are_counted_in_filter_stats(self, tmp_path):
+        """The count rides home on FetchResult so a pool parent can warn once."""
         path = self._vcf(tmp_path, "warn.vcf", ["m1", "m2", "d1"],
                          "chr1\t100\t.\tA\tT\t99\tPASS\t.\tGT\t0\t1\t0/1")
-        reader = IndividualVariantReader(path, min_freq=0.0, min_qual=0.0,
-                                         min_call_rate=0.0, min_an=1)
-        reader.fetch("chr1", 0, 1000)
-        with caplog.at_level(logging.WARNING):
-            reader.close()
-        assert "2 non-diploid genotype call(s)" in caplog.text
+        with IndividualVariantReader(path, min_freq=0.0, min_qual=0.0,
+                                     min_call_rate=0.0, min_an=1) as reader:
+            assert reader.fetch("chr1", 0, 1000).stats.n_non_diploid == 2
 
     def test_diploid_unaffected(self, tmp_path):
         path = self._vcf(tmp_path, "dip.vcf", ["d1", "d2", "d3"],

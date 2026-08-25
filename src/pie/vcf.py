@@ -20,7 +20,6 @@ class _BaseVariantReader:
         """Call at end of subclass __init__ after self._vcf is set."""
         self._contigs: frozenset[str] = frozenset(self._vcf.seqnames)
         self._missing_contigs: set[str] = set()
-        self._n_star_alleles = 0
         self._closed = False
 
     def close(self):
@@ -34,9 +33,6 @@ class _BaseVariantReader:
                 ", ".join(sorted(self._missing_contigs)[:20])
                 + (" ..." if len(self._missing_contigs) > 20 else ""),
             )
-        if self._n_star_alleles:
-            log.info("Skipped %d non-SNP ALT alleles (*, indels)",
-                     self._n_star_alleles)
         self._vcf.close()
 
     def __enter__(self):
@@ -78,6 +74,12 @@ class FilterStats:
     n_filtered_multiallelic: int = 0
     n_filtered_call_rate: int = 0
     n_filtered_an: int = 0
+    # Reader diagnostics. They live here, per fetch, rather than on the reader
+    # because pool workers never report reader state back: multiprocessing
+    # children exit via os._exit()/SIGTERM, so nothing registered for their
+    # shutdown runs. FilterStats rides home on each GeneResult instead.
+    n_star_alleles: int = 0
+    n_non_diploid: int = 0
 
     def __iadd__(self, other: "FilterStats") -> "FilterStats":
         self.n_total += other.n_total
@@ -89,6 +91,8 @@ class FilterStats:
         self.n_filtered_multiallelic += other.n_filtered_multiallelic
         self.n_filtered_call_rate += other.n_filtered_call_rate
         self.n_filtered_an += other.n_filtered_an
+        self.n_star_alleles += other.n_star_alleles
+        self.n_non_diploid += other.n_non_diploid
         return self
 
 
@@ -198,7 +202,7 @@ class VariantReader(_BaseVariantReader):
             for alt_idx, alt_allele in enumerate(record.ALT):
                 # Per-allele SNP check: single valid nucleotide
                 if alt_allele not in _VALID_BASES:
-                    self._n_star_alleles += 1
+                    stats.n_star_alleles += 1
                     stats.n_filtered_not_snp += 1
                     continue
                 depth, freq, ref_count, alt_count = (
@@ -348,9 +352,11 @@ class IndividualVariantReader(_BaseVariantReader):
     Note: Only diploid genotypes are supported.  cyvcf2 reports a haploid
     call as ``[allele, phased]`` (two elements) rather than the diploid
     ``[a1, a2, phased]``, so such calls are detected by genotype length,
-    counted, and treated as uncalled; a warning naming the count is emitted
-    when the reader is closed.  They lower the site's call rate and are
-    therefore subject to ``--min-call-rate`` like any other missing data.
+    counted in ``FilterStats.n_non_diploid`` and treated as uncalled; the
+    caller sums that count and warns once (see ``run_parallel``, the only
+    place that sees every worker's counts).  They lower the site's call rate
+    and are therefore subject to ``--min-call-rate`` like any other missing
+    data.
     """
 
     def __init__(self, vcf_path: str, samples: list[str] | None = None,
@@ -365,23 +371,11 @@ class IndividualVariantReader(_BaseVariantReader):
         self._min_an = min_an
         self._vcf = VCF(vcf_path, samples=samples)
         self._n_samples = len(self._vcf.samples)
-        self._n_non_diploid = 0
         self._init_contig_tracking()
 
     @property
     def n_samples(self) -> int:
         return self._n_samples
-
-    def close(self):
-        if not self._closed and self._n_non_diploid:
-            log.warning(
-                "Treated %d non-diploid genotype call(s) as uncalled — pie "
-                "assumes diploid data. Haploid records (e.g. hemizygous male "
-                "sex chromosomes) are not supported; call them as diploid or "
-                "restrict the analysis to diploid samples.",
-                self._n_non_diploid,
-            )
-        super().close()
 
     def fetch(self, chrom: str, start: int, end: int) -> FetchResult:
         """Fetch filtered variants in region (0-based, half-open).
@@ -439,7 +433,7 @@ class IndividualVariantReader(_BaseVariantReader):
                 # One entry per ploidy plus the phase flag, so a diploid call
                 # is exactly 3 long.  See the class docstring.
                 if len(gt) != 3:
-                    self._n_non_diploid += 1
+                    stats.n_non_diploid += 1
                     continue
                 a1, a2 = gt[0], gt[1]
                 if a1 < 0 or a2 < 0:
@@ -467,7 +461,7 @@ class IndividualVariantReader(_BaseVariantReader):
 
             for alt_idx, alt_allele in enumerate(record.ALT):
                 if alt_allele not in _VALID_BASES:
-                    self._n_star_alleles += 1
+                    stats.n_star_alleles += 1
                     stats.n_filtered_not_snp += 1
                     continue
                 ac = alt_counts[alt_idx]

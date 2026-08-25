@@ -4,6 +4,7 @@ import logging
 import pytest
 from pie.parallel import run_parallel
 from pie.diversity import GeneResult
+from tests.helpers import bgzip_and_index
 
 
 class TestRunParallel:
@@ -78,10 +79,10 @@ class TestWorkerInitFailure:
 
 
 class TestAtexitRegistration:
-    """No atexit hook in the single-threaded path — see _pool_worker_init."""
+    """No atexit hook anywhere — a pool worker would never run one anyway."""
 
-    def test_single_thread_registers_no_atexit_hook(self, ref_fasta, gff3_file,
-                                                    vcf_file):
+    def test_run_registers_no_atexit_hook(self, ref_fasta, gff3_file,
+                                          vcf_file):
         import atexit
 
         before = atexit._ncallbacks()
@@ -89,3 +90,46 @@ class TestAtexitRegistration:
             run_parallel(ref_fasta, gff3_file, vcf_file,
                          min_freq=0.0, min_depth=0, min_qual=0, threads=1)
         assert atexit._ncallbacks() == before
+
+
+@pytest.fixture
+def haploid_vcf_file(tmp_path):
+    """Individual-mode VCF whose pos-195 site carries two haploid calls."""
+    vcf_content = (
+        "##fileformat=VCFv4.2\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "##contig=<ID=chr1,length=350>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4\n"
+        "chr1\t195\t.\tA\tT\t45\t.\t.\tGT\t0/1\t0/1\t1\t0\n"
+    )
+    vcf_path = tmp_path / "haploid.vcf"
+    vcf_path.write_text(vcf_content)
+    return bgzip_and_index(vcf_path)
+
+
+class TestReaderDiagnostics:
+    """Reader observations must reach the user in pool runs too.
+
+    A worker's reader is never closed by anyone — the pool terminates it — so
+    these counts travel back in FilterStats and are summed by run_parallel.
+    """
+
+    @pytest.mark.parametrize("threads", [1, 2])
+    def test_non_diploid_calls_warned_once(self, ref_fasta, gff3_file,
+                                           haploid_vcf_file, caplog, threads):
+        with caplog.at_level(logging.WARNING, logger="pie.parallel"):
+            run_parallel(ref_fasta, gff3_file, haploid_vcf_file,
+                         min_freq=0.0, min_qual=0.0, mode="individual",
+                         min_call_rate=0.0, min_an=1, threads=threads)
+        msgs = [r.message for r in caplog.records
+                if "non-diploid genotype call(s)" in r.message]
+        assert len(msgs) == 1
+        assert "2 non-diploid" in msgs[0]
+
+    def test_silent_when_all_diploid(self, ref_fasta, gff3_file,
+                                     individual_vcf_file, caplog):
+        with caplog.at_level(logging.WARNING, logger="pie.parallel"):
+            run_parallel(ref_fasta, gff3_file, individual_vcf_file,
+                         min_freq=0.0, min_qual=0.0, mode="individual",
+                         min_call_rate=0.0, min_an=1, threads=2)
+        assert "non-diploid" not in caplog.text
